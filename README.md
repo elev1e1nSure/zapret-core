@@ -1,5 +1,7 @@
 # zapret-core
 
+[English](README.md) | [Русский](README.ru.md)
+
 Automatic DPI bypass engine for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
 
 Built on top of [zapret](https://github.com/bol-van/zapret) by bol-van and inspired by [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal.

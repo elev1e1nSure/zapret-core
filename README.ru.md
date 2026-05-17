@@ -1,5 +1,7 @@
 # zapret-core
 
+[English](README.md) | [Русский](README.ru.md)
+
 Автоматический движок обхода DPI для YouTube и Discord на Windows. Сам находит рабочую стратегию для вашего провайдера, запоминает её и восстанавливается, когда провайдер обновляет блокировку — ручная настройка не требуется.
 
 Создан на основе [zapret](https://github.com/bol-van/zapret) от bol-van и вдохновлён [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) от Flowseal.
