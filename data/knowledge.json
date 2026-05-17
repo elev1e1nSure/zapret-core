@@ -1,1 +1,56 @@
-{}
+{
+  "entries": [
+    {
+      "vector": {
+        "DesyncMethod": "fake",
+        "RepeatsTCP": 8,
+        "RepeatsUDP": 6,
+        "Fooling": "badseq",
+        "SplitPos": "1",
+        "TLSMode": "file",
+        "TLSFiles": [
+          "tls_clienthello_www_google_com.bin"
+        ],
+        "TLSMod": "rnd,dupsid,sni=www.google.com",
+        "SeqOvl": 0,
+        "SeqOvlPattern": "tls_clienthello_www_google_com.bin",
+        "HostFakeMod": "www.google.com",
+        "Cutoff": "n3",
+        "BadseqIncrement": 2,
+        "QuicBin": "quic_initial_www_google_com.bin",
+        "AnyProtocol": true,
+        "IPID": "zero"
+      },
+      "asn": "AS210644",
+      "score": 1,
+      "hits": 3,
+      "last_seen": "2026-05-17T22:50:33.3933262+03:00"
+    },
+    {
+      "vector": {
+        "DesyncMethod": "fake",
+        "RepeatsTCP": 8,
+        "RepeatsUDP": 6,
+        "Fooling": "ts",
+        "SplitPos": "1",
+        "TLSMode": "file",
+        "TLSFiles": [
+          "tls_clienthello_www_google_com.bin"
+        ],
+        "TLSMod": "rnd,dupsid,sni=www.google.com",
+        "SeqOvl": 0,
+        "SeqOvlPattern": "tls_clienthello_www_google_com.bin",
+        "HostFakeMod": "www.google.com",
+        "Cutoff": "n3",
+        "BadseqIncrement": 2,
+        "QuicBin": "quic_initial_www_google_com.bin",
+        "AnyProtocol": true,
+        "IPID": "zero"
+      },
+      "asn": "AS20985",
+      "score": 1,
+      "hits": 1,
+      "last_seen": "2026-05-17T22:29:36.2947129+03:00"
+    }
+  ]
+}

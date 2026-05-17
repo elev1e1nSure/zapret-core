@@ -1,3 +1,190 @@
 package main
 
-// TODO: Implement tester
+import (
+	"fmt"
+	"net/http"
+	"os/exec"
+	"time"
+)
+
+// TestTarget represents a URL to check after winws starts
+type TestTarget struct {
+	Name string
+	URL  string
+}
+
+var defaultTargets = []TestTarget{
+	{"YouTube", "https://www.youtube.com/generate_204"},
+	{"Discord", "https://discord.com/api/v10/gateway"},
+	{"Google",  "https://www.google.com/generate_204"},
+}
+
+// Strategy holds winws arguments for a single run
+type Strategy struct {
+	Name string
+	Args []string
+}
+
+// TestResult holds the outcome of a single test run
+type TestResult struct {
+	Score   float64 // 0.0 to 1.0
+	Details map[string]bool
+}
+
+
+// StopWinws kills all running winws.exe processes
+func StopWinws() error {
+	cmd := exec.Command("taskkill", "/F", "/IM", "winws.exe")
+	if err := cmd.Run(); err != nil {
+		// exit code 128 = process not found — not an error
+		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 128 {
+			return fmt.Errorf("taskkill winws.exe: %w", err)
+		}
+	}
+	time.Sleep(1 * time.Second) // wait for WinDivert handle release
+	return nil
+}
+
+// IsWinwsRunning checks if winws.exe is currently running
+func IsWinwsRunning() bool {
+	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq winws.exe")
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(out) > 0 && contains(string(out), "winws.exe")
+}
+
+// StartWinws launches winws.exe with the given strategy arguments
+func StartWinws(s *Strategy) error {
+	path := winwsPath()
+	cmd := exec.Command(path, s.Args...)
+	cmd.Dir = assetsDir()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start winws: %w", err)
+	}
+	return nil
+}
+
+// TestStrategy runs a full test cycle for a strategy and returns a score
+// It stops winws, starts it with new args, waits, then checks targets
+func TestStrategy(s *Strategy) TestResult {
+	StopWinws()
+
+	if err := StartWinws(s); err != nil {
+		logError("Failed to start winws: %v", err)
+		return TestResult{Score: 0, Details: map[string]bool{}}
+	}
+
+	time.Sleep(Cfg.InitDelayDuration())
+
+	// Run testRuns passes and average the score
+	totalScore := 0.0
+	lastDetails := map[string]bool{}
+
+	for i := 0; i < Cfg.TestRuns; i++ {
+		score, details := checkTargets()
+		totalScore += score
+		lastDetails = details
+		if i < Cfg.TestRuns-1 {
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	finalScore := totalScore / float64(Cfg.TestRuns)
+	printTestResult(s.Name, finalScore, lastDetails)
+
+	return TestResult{Score: finalScore, Details: lastDetails}
+}
+
+// checkTargets checks all default targets and returns score + per-target results
+func checkTargets() (float64, map[string]bool) {
+	client := &http.Client{
+		Timeout: Cfg.TestTimeoutDuration(),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return nil // follow redirects
+		},
+	}
+
+	details := map[string]bool{}
+	ok := 0
+
+	for _, t := range defaultTargets {
+		resp, err := client.Get(t.URL)
+		if err == nil && resp.StatusCode < 500 {
+			details[t.Name] = true
+			ok++
+			resp.Body.Close()
+		} else {
+			details[t.Name] = false
+		}
+	}
+
+	score := float64(ok) / float64(len(defaultTargets))
+	return score, details
+}
+
+// printTestResult prints a human-readable summary of test results
+func printTestResult(name string, score float64, details map[string]bool) {
+	logInfo("[%s] score=%.2f", name, score)
+	for _, t := range defaultTargets {
+		if details[t.Name] {
+			logInfo("%s:OK", t.Name)
+		} else {
+			logWarn("%s:FAIL", t.Name)
+		}
+	}
+}
+
+// CheckConflicts checks for known software that breaks WinDivert
+func CheckConflicts() []string {
+	conflicts := []string{}
+
+	// Service-based conflicts
+	services := []string{
+		"GoodbyeDPI",
+		"discordfix_zapret",
+		"winws1",
+		"winws2",
+		"TracSrvWrapper", // Check Point
+		"EPWD",          // Check Point
+	}
+
+	for _, svc := range services {
+		cmd := exec.Command("sc", "query", svc)
+		out, _ := cmd.Output()
+		if contains(string(out), "RUNNING") {
+			conflicts = append(conflicts, svc)
+		}
+	}
+
+	// AdguardSvc process check
+	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq AdguardSvc.exe")
+	out, _ := cmd.Output()
+	if contains(string(out), "AdguardSvc.exe") {
+		conflicts = append(conflicts, "AdguardSvc")
+	}
+
+	// Killer NIC service check
+	cmd = exec.Command("sc", "query")
+	out, _ = cmd.Output()
+	if contains(string(out), "Killer") {
+		conflicts = append(conflicts, "Killer NIC")
+	}
+
+	// Intel Connectivity Network Service check
+	cmd = exec.Command("sc", "query")
+	out, _ = cmd.Output()
+	if contains(string(out), "Intel") && contains(string(out), "Connectivity") && contains(string(out), "Network") {
+		conflicts = append(conflicts, "Intel Connectivity Network Service")
+	}
+
+	// SmartByte service check
+	cmd = exec.Command("sc", "query")
+	out, _ = cmd.Output()
+	if contains(string(out), "SmartByte") {
+		conflicts = append(conflicts, "SmartByte")
+	}
+
+	return conflicts
+}

@@ -1,0 +1,21 @@
+# Runtime data
+data/
+*.log
+
+# Compiled binaries
+*.exe
+zapret-core
+
+# Binary dependencies (WinDivert, cygwin, winws)
+assets/*.dll
+assets/*.sys
+assets/*.exe
+assets/fake/*.bin
+
+# Backup files
+lists/*.backup
+*.backup
+
+# OS specific
+.DS_Store
+Thumbs.db
