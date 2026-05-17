@@ -1,0 +1,55 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      
+      - name: Run tests
+        run: go test ./...
+      
+      - name: Build
+        run: go build -ldflags="-s -w -H windowsgui" -o zapret-core.exe .
+      
+      - name: Create distribution directory
+        run: |
+          mkdir dist
+          mkdir dist\zapret-core
+          copy zapret-core.exe dist\zapret-core\
+          xcopy /E /I /Y assets dist\zapret-core\assets
+          xcopy /E /I /Y lists dist\zapret-core\lists
+          copy README.md dist\zapret-core\
+          copy README.ru.md dist\zapret-core\
+      
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+      
+      - name: Create zip
+        run: powershell -Command "Compress-Archive -Path 'dist\zapret-core' -DestinationPath 'zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip' -Force"
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
