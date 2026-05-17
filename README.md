@@ -130,7 +130,7 @@ Stops winws. Exits immediately.
 zapret-core.exe --server
 ```
 
-Starts an HTTP server on `127.0.0.1:7432`. Intended for integration with external applications such as a Tauri UI. Stops on Ctrl+C.
+Starts an HTTP server on `127.0.0.1:7432`. Intended for integration with external applications. Stops on Ctrl+C.
 
 ---
 
@@ -287,33 +287,6 @@ Conflicting software is running. Stop it and retry.
 
 **409 in API**
 Another operation is in progress. Wait for it to finish or stop it via `POST /api/stop`.
-
----
-
-## Tauri Integration
-
-zapret-core is designed to run as a sidecar process. Start with `--server` and call the API via reqwest:
-
-```rust
-use reqwest::Client;
-
-let client = Client::new();
-
-// Status
-let status = client
-    .get("http://127.0.0.1:7432/api/status")
-    .send().await?
-    .json::<serde_json::Value>().await?;
-
-// Start strategy
-client.post("http://127.0.0.1:7432/api/start").send().await?;
-
-// Find strategy with SSE streaming
-let mut stream = client
-    .post("http://127.0.0.1:7432/api/find")
-    .send().await?
-    .bytes_stream();
-```
 
 ---
 

@@ -130,7 +130,7 @@ zapret-core.exe --stop
 zapret-core.exe --server
 ```
 
-Запускает HTTP сервер на `127.0.0.1:7432`. Предназначен для интеграции с внешними приложениями, например Tauri UI. Остановка по Ctrl+C.
+Запускает HTTP сервер на `127.0.0.1:7432`. Предназначен для интеграции с внешними приложениями. Остановка по Ctrl+C.
 
 ---
 
@@ -287,33 +287,6 @@ data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
 
 **409 в API**
 Выполняется другая операция. Подождите её завершения или остановите через `POST /api/stop`.
-
----
-
-## Интеграция с Tauri
-
-zapret-core разработан для работы как sidecar процесс. Запустите с `--server` и вызывайте API через reqwest:
-
-```rust
-use reqwest::Client;
-
-let client = Client::new();
-
-// Статус
-let status = client
-    .get("http://127.0.0.1:7432/api/status")
-    .send().await?
-    .json::<serde_json::Value>().await?;
-
-// Запуск стратегии
-client.post("http://127.0.0.1:7432/api/start").send().await?;
-
-// Поиск стратегии с SSE стримингом
-let mut stream = client
-    .post("http://127.0.0.1:7432/api/find")
-    .send().await?
-    .bytes_stream();
-```
 
 ---
 
