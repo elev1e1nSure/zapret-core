@@ -14,6 +14,7 @@ const (
 	INFO LogLevel = iota
 	WARN
 	ERROR
+	SUCCESS
 )
 
 var (
@@ -69,16 +70,30 @@ func log(level LogLevel, format string, args ...interface{}) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	
-	prefix := "[INFO] "
+	var prefix, color, icon string
+	reset := "\033[0m"
+	
 	switch level {
+	case INFO:
+		prefix = "INFO"
+		color = "\033[36m" // cyan
+		icon = "ℹ"
 	case WARN:
-		prefix = "[WARN] "
+		prefix = "WARN"
+		color = "\033[33m" // yellow
+		icon = "⚠"
 	case ERROR:
-		prefix = "[ERROR] "
+		prefix = "ERROR"
+		color = "\033[31m" // red
+		icon = "✗"
+	case SUCCESS:
+		prefix = "OK"
+		color = "\033[32m" // green
+		icon = "✓"
 	}
 	
-	msg := fmt.Sprintf(prefix+format, args...)
-	fmt.Fprintln(logWriter, msg)
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(logWriter, "%s[%s]%s %s %s\n", color, prefix, reset, icon, msg)
 }
 
 func logInfo(format string, args ...interface{}) {
@@ -91,4 +106,17 @@ func logWarn(format string, args ...interface{}) {
 
 func logError(format string, args ...interface{}) {
 	log(ERROR, format, args...)
+}
+
+func logSuccess(format string, args ...interface{}) {
+	log(SUCCESS, format, args...)
+}
+
+func printBanner() {
+	bold := "\033[1m"
+	cyan := "\033[36m"
+	reset := "\033[0m"
+	fmt.Fprintf(logWriter, "\n%s%s╔════════════════════════════════════════════════════════════╗%s\n", bold, cyan, reset)
+	fmt.Fprintf(logWriter, "%s%s║%s              zapret-core v1.0.1              %s%s║%s\n", bold, cyan, reset, bold, cyan, reset)
+	fmt.Fprintf(logWriter, "%s%s╚════════════════════════════════════════════════════════════╝%s\n\n", bold, cyan, reset)
 }

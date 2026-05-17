@@ -8,7 +8,7 @@ import (
 
 func main() {
 	if err := initLogger(); err != nil {
-		fmt.Printf("[!] Ошибка инициализации логгера: %v\n", err)
+		fmt.Printf("\033[31m[!] Ошибка инициализации логгера: %v\033[0m\n", err)
 		os.Exit(1)
 	}
 	defer closeLogger()
@@ -19,24 +19,32 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
+		printBanner()
 		runBest()
 		return
 	}
 
 	switch os.Args[1] {
 	case "--find":
+		printBanner()
 		runFind()
 	case "--status":
+		printBanner()
 		runStatus()
 	case "--stop":
+		printBanner()
 		runStop()
 	case "--watch":
+		printBanner()
 		runWatch()
 	case "--server":
+		printBanner()
 		runServer()
 	case "--update":
+		printBanner()
 		runUpdate()
 	default:
+		printBanner()
 		logInfo("Использование:")
 		logInfo("  zapret-core           — запустить лучшую известную стратегию")
 		logInfo("  zapret-core --find    — найти рабочую стратегию")
@@ -74,7 +82,7 @@ func runBest() {
 		logError("Ошибка запуска: %v", err)
 		os.Exit(1)
 	}
-	logInfo("Запущено. Ctrl+C для остановки.")
+	logSuccess("Запущено. Нажмите Ctrl+C для остановки.")
 	select {} // block forever
 }
 
@@ -94,7 +102,7 @@ func runFind() {
 		logError("Устраните конфликты и запустите снова.")
 		os.Exit(1)
 	}
-	logInfo("Конфликтов нет.")
+	logSuccess("Конфликтов нет.")
 
 	kb, err := LoadKnowledge()
 	if err != nil {
@@ -112,9 +120,9 @@ func runFind() {
 		os.Exit(1)
 	}
 
-	logInfo("Найдена рабочая стратегия: %s", result.Name)
+	logSuccess("Найдена рабочая стратегия: %s", result.Name)
 	kb.Record(provider.ASN, vector, 1.0)
-	logInfo("Стратегия сохранена в knowledge.")
+	logSuccess("Стратегия сохранена в knowledge.")
 }
 
 // runStatus shows the current state
@@ -148,7 +156,7 @@ func runStop() {
 		logError("Ошибка: %v", err)
 		os.Exit(1)
 	}
-	logInfo("Остановлено.")
+	logSuccess("Остановлено.")
 }
 
 // runWatch starts watchdog with auto-recovery on failure
@@ -208,5 +216,5 @@ func runUpdate() {
 		os.Exit(1)
 	}
 
-	logInfo("Списки успешно обновлены.")
+	logSuccess("Списки успешно обновлены.")
 }
