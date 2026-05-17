@@ -178,7 +178,7 @@ zapret-core.exe --server
 
 ### POST /api/stop
 
-Остановить winws.
+Stops winws.
 
 ```json
 { "status": "stopped" }

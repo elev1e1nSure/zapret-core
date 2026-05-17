@@ -16,6 +16,13 @@ assets/fake/*.bin
 lists/*.backup
 *.backup
 
+# Build artifacts
+dist/
+
+# Editor temp files
+*~
+*.swp
+
 # OS specific
 .DS_Store
 Thumbs.db
