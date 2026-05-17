@@ -2,6 +2,10 @@
 
 [English](README.md) | [Русский](README.ru.md)
 
+![Go](https://img.shields.io/badge/Go-1.21-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 Автоматический движок обхода DPI для YouTube и Discord на Windows. Сам находит рабочую стратегию для вашего провайдера, запоминает её и восстанавливается, когда провайдер обновляет блокировку — ручная настройка не требуется.
 
 Создан на основе [zapret](https://github.com/bol-van/zapret) от bol-van и вдохновлён [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) от Flowseal.
