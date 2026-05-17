@@ -54,6 +54,28 @@ lists/
 
 ---
 
+### Сборка из исходников
+
+Требования:
+- Go 1.26.3 или новее
+- Windows
+
+```bash
+git clone https://github.com/elev1e1nSure/zapret-core.git
+cd zapret-core
+go build -o zapret-core.exe .
+```
+
+Или используйте готовый скрипт сборки:
+
+```bash
+build.bat
+```
+
+Это создаст дистрибутив в папке `dist/`.
+
+---
+
 ## Использование
 
 ### Запуск с лучшей известной стратегией

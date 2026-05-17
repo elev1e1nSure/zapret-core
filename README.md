@@ -54,6 +54,28 @@ The `data/` folder is created automatically on first run.
 
 ---
 
+### Build from source
+
+Requirements:
+- Go 1.26.3 or newer
+- Windows
+
+```bash
+git clone https://github.com/elev1e1nSure/zapret-core.git
+cd zapret-core
+go build -o zapret-core.exe .
+```
+
+Or use the provided build script:
+
+```bash
+build.bat
+```
+
+This creates a distribution package in `dist/`.
+
+---
+
 ## Usage
 
 ### Start with best known strategy
