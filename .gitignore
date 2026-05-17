@@ -26,3 +26,10 @@ dist/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# IDE specific
+.windsurf/
+.vscode/
+
+# Old log files
+*.log.old

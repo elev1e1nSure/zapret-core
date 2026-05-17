@@ -23,6 +23,9 @@ var (
 )
 
 func initLogger() error {
+	// Ensure stdout is connected to console
+	fmt.Print("")
+	
 	cwd, _ := os.Getwd()
 	logPath := filepath.Join(cwd, "data", "zapret.log")
 	
@@ -31,10 +34,23 @@ func initLogger() error {
 		return err
 	}
 	
+	// Check if file exists to determine if we need to write BOM
+	_, err := os.Stat(logPath)
+	fileExists := !os.IsNotExist(err)
+	
 	// Open log file in append mode
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
+	}
+	
+	// Write UTF-8 BOM if file is new
+	if !fileExists {
+		_, err = f.Write([]byte{0xEF, 0xBB, 0xBF})
+		if err != nil {
+			f.Close()
+			return err
+		}
 	}
 	
 	logFile = f
