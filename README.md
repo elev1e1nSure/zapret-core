@@ -1,28 +1,30 @@
 # zapret-core
 
-Умное ядро для автоматического обхода блокировок YouTube и Discord на Windows. Само перебирает стратегии, находит рабочую для вашего провайдера и восстанавливается при поломке — без участия пользователя.
+Automatic DPI bypass engine for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
+
+Built on top of [zapret](https://github.com/bol-van/zapret) by bol-van and inspired by [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal.
 
 ---
 
-## Как это работает
+## How it works
 
-Обычные инструменты обхода блокировок дают вам список из десятков стратегий и говорят «попробуйте все по очереди». zapret-core делает это за вас: перебирает комбинации параметров, проверяет что реально работает, запоминает результат. При следующем запуске сразу использует то что уже сработало.
+Most DPI bypass tools give you a list of 80+ strategies and say "try them one by one". zapret-core does that for you: it generates parameter combinations, tests what actually works for your ISP, and remembers the result. Next time it starts with the best known strategy immediately.
 
-Если провайдер обновил блокировку — watchdog это заметит и сам найдёт новую рабочую стратегию.
-
----
-
-## Требования
-
-- Windows 7 или новее
-- Права администратора (обязательно — WinDivert устанавливает системный драйвер)
-- Подключение к интернету для определения провайдера и тестирования
+If your ISP updates their blocking — watchdog detects it and finds a new working strategy automatically.
 
 ---
 
-## Установка
+## Requirements
 
-Распакуйте архив. Структура должна выглядеть так:
+- Windows 7 or newer
+- Administrator rights (required — WinDivert installs a kernel driver)
+- Internet connection for ISP detection and testing
+
+---
+
+## Installation
+
+Extract the archive. The structure should look like this:
 
 ```
 zapret-core.exe
@@ -40,79 +42,79 @@ lists/
     ...
 ```
 
-Папка `data/` создастся автоматически при первом запуске.
+The `data/` folder is created automatically on first run.
 
-> Запускайте от имени администратора — иначе WinDivert не запустится.
+> Always run as administrator — WinDivert won't load otherwise.
 
 ---
 
-## Использование
+## Usage
 
-### Запустить с лучшей известной стратегией
+### Start with best known strategy
 
 ```
 zapret-core.exe
 ```
 
-Определяет вашего провайдера, берёт лучшую стратегию из базы и запускает. Работает пока не нажмёте Ctrl+C.
+Detects your ISP, loads the best strategy from the knowledge base, and starts. Runs until Ctrl+C.
 
-Если база пустая — выдаст подсказку запустить `--find`.
+If the knowledge base is empty — prompts you to run `--find` first.
 
 ---
 
-### Найти рабочую стратегию
+### Find a working strategy
 
 ```
 zapret-core.exe --find
 ```
 
-Перебирает до 137 комбинаций параметров и останавливается на первой рабочей. Прогресс выводится в реальном времени:
+Tests up to 137 parameter combinations and stops at the first one that works. Progress is shown in real time:
 
 ```
 [1/137] Testing: auto-1 [fake/ts/file]
   score=0.33  YouTube:FAIL  Discord:FAIL  Google:OK
 
-[2/137] Testing: auto-4 [fake/badseq/file]
+[4/137] Testing: auto-4 [fake/badseq/file]
   score=1.00  YouTube:OK  Discord:OK  Google:OK
 
-Найдена рабочая стратегия: auto-4 [fake/badseq/file]
+[+] Working strategy found: auto-4 [fake/badseq/file]
 ```
 
-Найденная стратегия сохраняется в базу и используется при следующих запусках.
+The result is saved to the knowledge base and used on subsequent runs.
 
-**Сколько времени занимает:** в лучшем случае — несколько минут. В худшем, если ни одна стратегия сразу не подходит — до 2 часов. На практике большинство пользователей находит рабочую за первые 10–20 попыток.
+**How long does it take:** best case — a few minutes. Worst case — up to 2 hours if nothing works immediately. In practice most users find a working strategy within the first 10–20 attempts.
 
 ---
 
-### Мониторинг с автовосстановлением
+### Monitor with auto-recovery
 
 ```
 zapret-core.exe --watch
 ```
 
-Запускает фоновый мониторинг. Каждые 60 секунд проверяет доступность YouTube и Discord. Если три проверки подряд провалились — автоматически запускает поиск новой стратегии и переключается на неё.
+Starts background monitoring. Checks YouTube and Discord every 60 seconds. If three checks in a row fail — automatically finds a new strategy and switches to it.
 
-Остановить: Ctrl+C. Watchdog и winws остановятся вместе.
+Stop with Ctrl+C. Both watchdog and winws will shut down cleanly.
 
 ---
 
-### Статус
+### Status
 
 ```
 zapret-core.exe --status
 ```
 
-Показывает запущен ли winws и лучшую известную стратегию для вашего провайдера. Сразу завершается.
+Shows whether winws is running and the best known strategy for your ISP. Exits immediately.
 
 ---
 
-### Остановить
+### Stop
 
 ```
 zapret-core.exe --stop
 ```
 
-Останавливает winws. Сразу завершается.
+Stops winws. Exits immediately.
 
 ---
 
@@ -122,17 +124,15 @@ zapret-core.exe --stop
 zapret-core.exe --server
 ```
 
-Запускает HTTP сервер на `127.0.0.1:7432`. Используется для интеграции с внешними приложениями (например, Tauri UI). Останавливается по Ctrl+C.
+Starts an HTTP server on `127.0.0.1:7432`. Intended for integration with external applications such as a Tauri UI. Stops on Ctrl+C.
 
 ---
 
-## HTTP API
+## HTTP API Reference
 
-Все эндпоинты доступны только локально (`127.0.0.1:7432`).
+All endpoints are local-only (`127.0.0.1:7432`).
 
 ### GET /api/status
-
-Текущее состояние системы.
 
 ```json
 {
@@ -147,15 +147,11 @@ zapret-core.exe --server
 
 ### GET /api/provider
 
-Информация о провайдере.
-
 ```json
 { "ASN": "AS12389", "Org": "Rostelecom", "Region": "Moscow Oblast" }
 ```
 
 ### GET /api/knowledge
-
-Все известные стратегии из базы.
 
 ```json
 {
@@ -168,13 +164,11 @@ zapret-core.exe --server
 
 ### POST /api/start
 
-Запустить лучшую известную стратегию.
+Start the best known strategy. Returns `404` if no strategies are known yet.
 
 ```json
 { "status": "started", "strategy": "auto-4 [fake/badseq/file]" }
 ```
-
-Если стратегий нет — `404 Not Found`.
 
 ### POST /api/stop
 
@@ -186,7 +180,7 @@ Stops winws.
 
 ### POST /api/find
 
-Запустить поиск стратегии. Ответ — SSE-поток событий.
+Start strategy search. Returns an SSE stream.
 
 ```
 event: progress
@@ -196,11 +190,11 @@ event: success
 data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
 ```
 
-Если уже идёт другая операция — `409 Conflict`.
+Returns `409 Conflict` if another operation is already running.
 
 ### POST /api/watchdog
 
-Запустить watchdog в фоне. Возвращает сразу.
+Start watchdog in background. Returns immediately.
 
 ```json
 { "status": "started", "message": "watchdog running in background" }
@@ -208,17 +202,15 @@ data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
 
 ### DELETE /api/watchdog
 
-Остановить watchdog.
-
 ```json
 { "status": "stopped" }
 ```
 
 ---
 
-## Конфигурация
+## Configuration
 
-При первом запуске создаётся `data/config.json` с дефолтными значениями:
+`data/config.json` is created automatically on first run:
 
 ```json
 {
@@ -231,28 +223,28 @@ data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
 }
 ```
 
-| Параметр | По умолчанию | Описание |
+| Parameter | Default | Description |
 |---|---|---|
-| `score_threshold` | `0.6` | Минимальный результат тестирования чтобы принять стратегию (0–1) |
-| `fail_threshold` | `3` | Сколько провалов подряд до запуска автовосстановления |
-| `check_interval` | `60` | Как часто watchdog проверяет соединение (секунды) |
-| `init_delay` | `5` | Сколько ждать после старта winws перед тестами (секунды) |
-| `test_timeout` | `8` | Таймаут одного HTTP теста (секунды) |
-| `test_runs` | `2` | Сколько раз повторить тест для надёжности |
+| `score_threshold` | `0.6` | Minimum test score to accept a strategy (0–1) |
+| `fail_threshold` | `3` | Consecutive failures before watchdog triggers recovery |
+| `check_interval` | `60` | How often watchdog checks connectivity (seconds) |
+| `init_delay` | `5` | How long to wait after starting winws before testing (seconds) |
+| `test_timeout` | `8` | Timeout for a single HTTP probe (seconds) |
+| `test_runs` | `2` | How many times to repeat each test for reliability |
 
 ---
 
-## База знаний
+## Knowledge Base
 
-`data/knowledge.json` хранит стратегии которые сработали для каждого провайдера (по ASN). При следующем запуске они проверяются первыми — до начала полного перебора.
+`data/knowledge.json` stores strategies that worked for each ISP (by ASN). On the next run they are tested first — before any full search begins.
 
-Если удалить файл — поиск начнётся с нуля. Файл не растёт бесконечно: одинаковые комбинации обновляются, а не дублируются.
+Deleting the file causes a full search from scratch. The file does not grow indefinitely — duplicate entries are updated, not added.
 
 ---
 
-## Конфликты
+## Conflict Detection
 
-Перед поиском стратегии программа проверяет наличие ПО которое мешает работе WinDivert:
+Before searching, zapret-core checks for software known to interfere with WinDivert:
 
 - GoodbyeDPI
 - AdGuardSvc
@@ -263,54 +255,54 @@ data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
 - Check Point (TracSrvWrapper, EPWD)
 - SmartByte
 
-Если найден конфликт — поиск прервётся с сообщением. Остановите конфликтующее ПО и запустите снова.
+If a conflict is found the search stops with a message. Disable the conflicting software and try again.
 
 ---
 
-## Логи
+## Logs
 
-Логи пишутся одновременно в консоль и в `data/zapret.log`. Уровни: `[INFO]`, `[WARN]`, `[ERROR]`.
-
----
-
-## Типичные проблемы
-
-**«Нет известных стратегий. Запустите --find»**
-База пустая или нет записей для вашего провайдера. Запустите `zapret-core.exe --find`.
-
-**«Рабочая стратегия не найдена»**
-Ни одна комбинация не прошла порог. Проверьте интернет-соединение или увеличьте `test_timeout` в config.json.
-
-**«Устраните конфликты и запустите снова»**
-Работает конфликтующее ПО. Остановите его и повторите.
-
-**«failed to start winws»**
-Не найден `assets/winws.exe` или нет прав администратора.
-
-**409 в API**
-Уже идёт операция. Подождите завершения или остановите текущую через `POST /api/stop`.
+Logs are written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `[ERROR]`.
 
 ---
 
-## Интеграция с Tauri
+## Troubleshooting
 
-zapret-core предназначен для запуска как sidecar-процесс. Запустите `--server` и обращайтесь к API через reqwest:
+**"No known strategies. Run --find"**
+The knowledge base is empty or has no entries for your ISP. Run `zapret-core.exe --find`.
+
+**"No working strategy found"**
+No combination passed the score threshold. Check your internet connection or increase `test_timeout` in config.json.
+
+**"Resolve conflicts and try again"**
+Conflicting software is running. Stop it and retry.
+
+**"failed to start winws"**
+`assets/winws.exe` not found or missing administrator rights.
+
+**409 in API**
+Another operation is in progress. Wait for it to finish or stop it via `POST /api/stop`.
+
+---
+
+## Tauri Integration
+
+zapret-core is designed to run as a sidecar process. Start with `--server` and call the API via reqwest:
 
 ```rust
 use reqwest::Client;
 
 let client = Client::new();
 
-// Статус
+// Status
 let status = client
     .get("http://127.0.0.1:7432/api/status")
     .send().await?
     .json::<serde_json::Value>().await?;
 
-// Запустить стратегию
+// Start strategy
 client.post("http://127.0.0.1:7432/api/start").send().await?;
 
-// Запустить поиск (SSE)
+// Find strategy with SSE streaming
 let mut stream = client
     .post("http://127.0.0.1:7432/api/find")
     .send().await?
@@ -319,6 +311,13 @@ let mut stream = client
 
 ---
 
-## Лицензия
+## Credits
+
+- [zapret](https://github.com/bol-van/zapret) by bol-van — the core DPI bypass engine (winws, WinDivert integration, fake packet binaries)
+- [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal — strategy presets and parameter research that informed the search space in this project
+
+---
+
+## License
 
 MIT
