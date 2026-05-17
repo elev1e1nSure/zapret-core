@@ -16,6 +16,12 @@ type FindProgress struct {
 	Score    float64 `json:"score"`
 }
 
+type UpdateProgress struct {
+	Current  int    `json:"current"`
+	Total    int    `json:"total"`
+	Filename string `json:"filename"`
+}
+
 type APIServer struct {
 	server           *http.Server
 	mu               sync.Mutex
@@ -69,6 +75,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	}
 
 	mux.HandleFunc("/api/find", srv.handleFind)
+	mux.HandleFunc("/api/update", srv.handleUpdate)
 	mux.HandleFunc("/api/start", srv.handleStart)
 	mux.HandleFunc("/api/stop", srv.handleStop)
 	mux.HandleFunc("/api/watchdog", func(w http.ResponseWriter, r *http.Request) {
@@ -358,7 +365,7 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 	}
 
 	progressChan := make(chan FindProgress, 10)
-	
+
 	// Check conflicts first
 	conflicts := CheckConflicts()
 	if len(conflicts) > 0 {
@@ -371,7 +378,7 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		opt := NewOptimizerWithProgress(s.provider.ASN, s.kb, progressChan)
 		result, vector := opt.Run()
-		
+
 		if result != nil {
 			s.kb.Record(s.provider.ASN, vector, 1.0)
 			progressChan <- FindProgress{
@@ -406,7 +413,79 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 			return
 		}
-		
+
+		s.sendSSE(w, "progress", progress)
+		flusher.Flush()
+	}
+}
+
+func (s *APIServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.checkConflict(w, r) {
+		return
+	}
+
+	s.setOperation("update")
+	defer s.clearOperation()
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	progressChan := make(chan UpdateProgress, 10)
+
+	// Start update in goroutine
+	go func() {
+		err := UpdateLists(func(current, total int, filename string) {
+			progressChan <- UpdateProgress{
+				Current:  current,
+				Total:    total,
+				Filename: filename,
+			}
+		})
+
+		if err != nil {
+			progressChan <- UpdateProgress{
+				Current:  -1, // sentinel for error
+				Total:    0,
+				Filename: err.Error(),
+			}
+		} else {
+			progressChan <- UpdateProgress{
+				Current:  -2, // sentinel for success
+				Total:    0,
+				Filename: "",
+			}
+		}
+		close(progressChan)
+	}()
+
+	// Stream progress
+	for progress := range progressChan {
+		if progress.Current == -1 {
+			// Error
+			s.sendSSE(w, "error", ErrorResponse{Error: progress.Filename})
+			flusher.Flush()
+			return
+		} else if progress.Current == -2 {
+			// Success
+			s.sendSSE(w, "success", SuccessResponse{Status: "updated", Message: "lists updated successfully"})
+			flusher.Flush()
+			return
+		}
+
 		s.sendSSE(w, "progress", progress)
 		flusher.Flush()
 	}

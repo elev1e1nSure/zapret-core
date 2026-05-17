@@ -124,6 +124,27 @@ Stops winws. Exits immediately.
 
 ---
 
+### Update lists
+
+```
+zapret-core.exe --update
+```
+
+Downloads updated lists from the Flowseal/zapret-discord-youtube repository and updates files in the `lists/` folder. Progress is shown in real time:
+
+```
+[1/5] Updating ipset-all.txt...
+[2/5] Updating ipset-exclude.txt...
+[3/5] Updating list-exclude.txt...
+[4/5] Updating list-general.txt...
+[5/5] Updating list-google.txt...
+Lists updated successfully.
+```
+
+On download error, files remain unchanged.
+
+---
+
 ### HTTP API
 
 ```
@@ -194,6 +215,20 @@ data: {"current": 3, "total": 137, "strategy": "auto-3 [fake/ts/file]", "score":
 
 event: success
 data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
+```
+
+Returns `409 Conflict` if another operation is already running.
+
+### POST /api/update
+
+Update lists from GitHub. Returns an SSE stream.
+
+```
+event: progress
+data: {"current": 1, "total": 5, "filename": "ipset-all.txt"}
+
+event: success
+data: {"status": "updated", "message": "lists updated successfully"}
 ```
 
 Returns `409 Conflict` if another operation is already running.

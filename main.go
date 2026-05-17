@@ -34,6 +34,8 @@ func main() {
 		runWatch()
 	case "--server":
 		runServer()
+	case "--update":
+		runUpdate()
 	default:
 		logInfo("Использование:")
 		logInfo("  zapret-core           — запустить лучшую известную стратегию")
@@ -42,6 +44,7 @@ func main() {
 		logInfo("  zapret-core --stop    — остановить")
 		logInfo("  zapret-core --watch   — мониторинг + автоподбор при поломке")
 		logInfo("  zapret-core --server  — запустить HTTP API сервер на :7432")
+		logInfo("  zapret-core --update  — обновить списки из GitHub")
 	}
 }
 
@@ -190,4 +193,20 @@ func runServer() {
 		logError("Server error: %v", err)
 		os.Exit(1)
 	}
+}
+
+// runUpdate updates list files from GitHub
+func runUpdate() {
+	logInfo("Обновление списков из GitHub...")
+
+	err := UpdateLists(func(current, total int, filename string) {
+		logInfo("[%d/%d] Обновление %s...", current, total, filename)
+	})
+
+	if err != nil {
+		logError("Ошибка обновления: %v", err)
+		os.Exit(1)
+	}
+
+	logInfo("Списки успешно обновлены.")
 }

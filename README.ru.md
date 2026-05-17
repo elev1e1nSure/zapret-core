@@ -124,6 +124,27 @@ zapret-core.exe --stop
 
 ---
 
+### Обновление списков
+
+```
+zapret-core.exe --update
+```
+
+Загружает актуальные списки из репозитория Flowseal/zapret-discord-youtube и обновляет файлы в папке `lists/`. Прогресс показывается в реальном времени:
+
+```
+[1/5] Обновление ipset-all.txt...
+[2/5] Обновление ipset-exclude.txt...
+[3/5] Обновление list-exclude.txt...
+[4/5] Обновление list-general.txt...
+[5/5] Обновление list-google.txt...
+Списки успешно обновлены.
+```
+
+При ошибке скачивания файлы остаются без изменений.
+
+---
+
 ### HTTP API
 
 ```
@@ -194,6 +215,20 @@ data: {"current": 3, "total": 137, "strategy": "auto-3 [fake/ts/file]", "score":
 
 event: success
 data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
+```
+
+Возвращает `409 Conflict`, если уже выполняется другая операция.
+
+### POST /api/update
+
+Обновляет списки из GitHub. Возвращает SSE поток.
+
+```
+event: progress
+data: {"current": 1, "total": 5, "filename": "ipset-all.txt"}
+
+event: success
+data: {"status": "updated", "message": "lists updated successfully"}
 ```
 
 Возвращает `409 Conflict`, если уже выполняется другая операция.
