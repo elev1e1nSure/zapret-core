@@ -322,4 +322,4 @@ let mut stream = client
 
 ## License
 
-MIT
+[MIT](LICENSE) © elevenSure
