@@ -49,8 +49,15 @@ jobs:
           Write-Output "VERSION=$version" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
-      - name: Create zip
-        run: powershell -Command "Compress-Archive -Path 'dist\zapret-core' -DestinationPath 'zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip' -Force"
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
+          draft: false
+          prerelease: false
+          body_path: release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Generate Release Notes
         id: release_notes
