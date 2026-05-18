@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -147,6 +148,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 		}
 	})
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
+	mux.HandleFunc("/api/shutdown", srv.handleShutdown)
 	mux.HandleFunc("/api/events", srv.handleEvents)
 	mux.HandleFunc("/api/logs", srv.handleLogs)
 
@@ -374,6 +376,29 @@ func (s *APIServer) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.sendJSON(w, http.StatusOK, SuccessResponse{Status: "saved"})
+}
+
+func (s *APIServer) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	if _, ok := w.(http.Flusher); !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	s.sendEvent(w, "shutdown", "Server is shutting down.", nil)
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		os.Exit(0)
+	}()
 }
 
 func (s *APIServer) handleStart(w http.ResponseWriter, r *http.Request) {
