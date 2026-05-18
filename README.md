@@ -213,6 +213,8 @@ zapret-core.exe --server
 
 Starts an HTTP server on `127.0.0.1:7432` for integration with external applications. Stop with Ctrl+C.
 
+**Note:** The `--server` and `--watch` modes run silently without a console window (daemon mode).
+
 ---
 
 ## API Reference
