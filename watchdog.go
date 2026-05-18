@@ -6,10 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
-// probeTarget is a URL we check to confirm connectivity
+// probeTarget represents a URL we check to confirm DPI bypass is working
 type probeTarget struct {
 	name string
 	url  string
@@ -20,17 +21,34 @@ var probeTargets = []probeTarget{
 	{"discord", "https://discord.com/api/v10/gateway"},
 }
 
+// Global stats accessible by watchdog and API server
+var (
+	globalStats struct {
+		mu                sync.Mutex
+		totalChecks       int64
+		totalFailures     int64
+		totalRestarts     int64
+		lastRestartTime   time.Time
+		lastRestartReason string
+	}
+)
+
 // Watchdog monitors connection and calls onFail when it detects a breakdown
 type Watchdog struct {
-	mu       sync.Mutex
-	failures int
-	lastOK   time.Time
-	running  bool
-	stopCh   chan struct{}
-	onFail   func() // called when failure threshold is reached
+	mu                sync.Mutex
+	failures          int
+	lastOK            time.Time
+	running           bool
+	stopCh            chan struct{}
+	onFail            func() // called when failure threshold is reached
+	totalChecks       int64  // total probe checks performed
+	totalFailures     int64  // total failures detected
+	totalRestarts     int64  // total watchdog-triggered restarts
+	lastRestartTime   time.Time
+	lastRestartReason string
 }
 
-// NewWatchdog creates a watchdog. onFail is called in a separate goroutine.
+// NewWatchdog creates a new watchdog instance. onFail is called in a separate goroutine.
 func NewWatchdog(onFail func()) *Watchdog {
 	return &Watchdog{
 		stopCh: make(chan struct{}),
@@ -80,6 +98,10 @@ func (w *Watchdog) Stop() {
 
 // probe checks all targets and updates failure counter
 func (w *Watchdog) probe() {
+	globalStats.mu.Lock()
+	globalStats.totalChecks++
+	globalStats.mu.Unlock()
+
 	ok, _ := checkProbeTargets()
 
 	w.mu.Lock()
@@ -94,11 +116,20 @@ func (w *Watchdog) probe() {
 		return
 	}
 
+	globalStats.mu.Lock()
+	globalStats.totalFailures++
+	globalStats.mu.Unlock()
+
 	w.failures++
 	logWarn("[watchdog] failure %d/%d", w.failures, Cfg.FailThreshold)
 
 	if w.failures >= Cfg.FailThreshold {
 		w.failures = 0 // reset so we don't spam onFail
+		globalStats.mu.Lock()
+		globalStats.totalRestarts++
+		globalStats.lastRestartTime = time.Now()
+		globalStats.lastRestartReason = "failure threshold reached"
+		globalStats.mu.Unlock()
 		logWarn("[watchdog] threshold reached — triggering optimizer")
 		go w.onFail()
 	}
@@ -176,7 +207,7 @@ func StartWatchdog(asn string, kb *Knowledge) {
 	wd.Start()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
 	logInfo("Stopping watchdog...")
@@ -187,7 +218,8 @@ func StartWatchdog(asn string, kb *Knowledge) {
 // StartWatchdogBackground starts watchdog in background, returns immediately
 // Context can be used to cancel the watchdog
 func StartWatchdogBackground(asn string, kb *Knowledge, ctx context.Context) {
-	wd := NewWatchdog(func() {
+	var wd *Watchdog
+	wd = NewWatchdog(func() {
 		logInfo("[watchdog] Starting optimizer recovery...")
 		result, vector := NewOptimizer(asn, kb).Run()
 		if result != nil {

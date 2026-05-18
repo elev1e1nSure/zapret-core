@@ -24,6 +24,8 @@ type UpdateProgress struct {
 	Filename string `json:"filename"`
 }
 
+var apiServer *APIServer
+
 type APIServer struct {
 	server          *http.Server
 	mu              sync.Mutex
@@ -36,6 +38,15 @@ type APIServer struct {
 	kb              *Knowledge
 	provider        ProviderInfo
 	watchdogCancel  context.CancelFunc
+	stats           Stats
+}
+
+type Stats struct {
+	TotalChecks       int64     `json:"total_checks"`
+	TotalFailures     int64     `json:"total_failures"`
+	TotalRestarts     int64     `json:"total_restarts"`
+	LastRestartTime   time.Time `json:"last_restart_time"`
+	LastRestartReason string    `json:"last_restart_reason"`
 }
 
 type StatusResponse struct {
@@ -45,6 +56,7 @@ type StatusResponse struct {
 	Provider            ProviderInfo `json:"provider"`
 	OperationInProgress bool         `json:"operation_in_progress"`
 	OperationType       string       `json:"operation_type"`
+	LastRestartReason   string       `json:"last_restart_reason"`
 }
 
 type ErrorResponse struct {
@@ -128,6 +140,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 		kb:       kb,
 		provider: provider,
 	}
+	apiServer = srv
 
 	mux.HandleFunc("/api/find", srv.handleFind)
 	mux.HandleFunc("/api/update", srv.handleUpdate)
@@ -149,6 +162,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/version", srv.handleVersion)
 	mux.HandleFunc("/api/health", srv.handleHealth)
 	mux.HandleFunc("/api/uptime", srv.handleUptime)
+	mux.HandleFunc("/api/stats", srv.handleStats)
 	mux.HandleFunc("/api/info", srv.handleInfo)
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -264,6 +278,10 @@ func (s *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	globalStats.mu.Lock()
+	lastRestartReason := globalStats.lastRestartReason
+	globalStats.mu.Unlock()
+
 	resp := StatusResponse{
 		WinwsRunning:        winwsRunning,
 		WatchdogRunning:     watchdogRunning,
@@ -271,6 +289,7 @@ func (s *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Provider:            s.provider,
 		OperationInProgress: opInProgress,
 		OperationType:       opType,
+		LastRestartReason:   lastRestartReason,
 	}
 
 	s.sendJSON(w, http.StatusOK, resp)
@@ -351,6 +370,24 @@ func (s *APIServer) handleUptime(w http.ResponseWriter, r *http.Request) {
 		UptimeSeconds: uptimeSec,
 		HumanReadable: human,
 	})
+}
+
+func (s *APIServer) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Read from global stats
+	globalStats.mu.Lock()
+	stats := Stats{
+		TotalChecks:       globalStats.totalChecks,
+		TotalFailures:     globalStats.totalFailures,
+		TotalRestarts:     globalStats.totalRestarts,
+		LastRestartTime:   globalStats.lastRestartTime,
+		LastRestartReason: globalStats.lastRestartReason,
+	}
+	globalStats.mu.Unlock()
+	s.sendJSON(w, http.StatusOK, stats)
 }
 
 func (s *APIServer) handleGetConfig(w http.ResponseWriter, r *http.Request) {

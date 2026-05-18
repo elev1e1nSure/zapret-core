@@ -1,3 +1,6 @@
+// Package zapret-core provides DPI bypass functionality for YouTube and Discord on Windows.
+// It automatically finds working bypass strategies for your ISP, remembers them, and recovers when your ISP updates their blocking.
+// The core can run standalone via CLI or as a daemon with HTTP API for integration with GUI applications.
 package main
 
 import (
@@ -7,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -122,7 +126,7 @@ func runBest() {
 
 	// Handle Ctrl+C to stop winws before exiting
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
 	logInfo("Stopping...")
@@ -233,7 +237,7 @@ func runServer() {
 	logInfo("Starting API server on 127.0.0.1:7432")
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
