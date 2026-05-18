@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -290,9 +289,6 @@ func applyUpdate(newExePath, remoteVersion string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: 0x00000008, // DETACHED_PROCESS
-	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start new process: %w", err)
