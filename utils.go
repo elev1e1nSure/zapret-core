@@ -1,10 +1,26 @@
+//go:build windows
+
 package main
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
+
+// hideConsoleWindow hides the console window using WinAPI.
+// Called before any log output in daemon modes (--server, --watch) to prevent window flash.
+func hideConsoleWindow() {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	user32 := syscall.NewLazyDLL("user32.dll")
+	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
+	showWindow := user32.NewProc("ShowWindow")
+	hwnd, _, _ := getConsoleWindow.Call()
+	if hwnd != 0 {
+		showWindow.Call(hwnd, 0) // SW_HIDE = 0
+	}
+}
 
 // exeDir returns the directory of the running executable.
 // Falls back to the current working directory on error.

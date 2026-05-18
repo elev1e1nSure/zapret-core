@@ -43,9 +43,11 @@ func main() {
 		printBanner()
 		runStop()
 	case "--watch":
+		hideConsoleWindow()
 		printBanner()
 		runWatch()
 	case "--server":
+		hideConsoleWindow()
 		printBanner()
 		runServer()
 	case "--updatelists":
