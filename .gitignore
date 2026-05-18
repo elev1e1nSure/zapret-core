@@ -34,3 +34,9 @@ Thumbs.db
 
 # Old log files
 *.log.old
+
+# Self-update temp files
+zapret-core-update.zip
+checksums.txt
+zapret-core.exe.new
+zapret-core.exe.old
