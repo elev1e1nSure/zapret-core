@@ -1,5 +1,13 @@
 # zapret-core
 
+[English](README.md) | [Русский](README.ru.md)
+
+![Go](https://img.shields.io/badge/Go-1.21-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Release](https://img.shields.io/github/v/release/elev1e1nSure/zapret-core)
+![Downloads](https://img.shields.io/github/downloads/elev1e1nSure/zapret-core/total)
+
 Тулза для обхода DPI на Windows — для YouTube и Discord. Сама перебирает стратегии, находит рабочую под ваш провайдер и запоминает. Если провайдер обновит блокировку — сама же найдёт новую.
 
 Сделано на базе [zapret](https://github.com/bol-van/zapret) (bol-van) и [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) (Flowseal).
@@ -21,6 +29,8 @@
 ---
 
 ## Установка
+
+> **[Скачать последний релиз](https://github.com/elev1e1nSure/zapret-core/releases/latest)**
 
 Распакуйте архив, структура должна быть такой:
 
@@ -46,6 +56,9 @@ lists/
 
 ### Собрать из исходников
 
+<details>
+<summary>Инструкции</summary>
+
 Нужен Go 1.21+ и Windows.
 
 ```bash
@@ -59,6 +72,8 @@ go build -o zapret-core.exe .
 ```bash
 build.bat
 ```
+
+</details>
 
 ---
 
@@ -161,7 +176,8 @@ zapret-core.exe --server
 
 ## Справка по API
 
-Все эндпоинты доступны только локально (`127.0.0.1:7432`).
+<details>
+<summary>Все эндпоинты доступны только локально (127.0.0.1:7432)</summary>
 
 ### GET /api/status
 
@@ -249,6 +265,8 @@ data: {"status": "updated", "message": "lists updated successfully"}
 { "status": "stopped" }
 ```
 
+</details>
+
 ---
 
 ## Настройки
@@ -309,6 +327,9 @@ data: {"status": "updated", "message": "lists updated successfully"}
 
 ## Если что-то не работает
 
+<details>
+<summary>Частые проблемы</summary>
+
 **"No known strategies. Run --find"** — база пустая или нет записей для вашего провайдера. Запустите `--find`.
 
 **"No working strategy found"** — ни одна стратегия не набрала нужный балл. Проверьте интернет или увеличьте `test_timeout` в конфиге.
@@ -318,6 +339,8 @@ data: {"status": "updated", "message": "lists updated successfully"}
 **"failed to start winws"** — нет `assets/winws.exe` или нет прав администратора.
 
 **409 в API** — уже выполняется другая операция, подождите или остановите через `POST /api/stop`.
+
+</details>
 
 ---
 

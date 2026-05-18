@@ -5,6 +5,8 @@
 ![Go](https://img.shields.io/badge/Go-1.21-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Release](https://img.shields.io/github/v/release/elev1e1nSure/zapret-core)
+![Downloads](https://img.shields.io/github/downloads/elev1e1nSure/zapret-core/total)
 
 DPI bypass tool for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
 
@@ -27,6 +29,8 @@ Most DPI bypass tools give you a list of 80+ strategies and say "try them one by
 ---
 
 ## Installation
+
+> **[Download latest release](https://github.com/elev1e1nSure/zapret-core/releases/latest)**
 
 Extract the archive. The structure should look like this:
 
@@ -52,6 +56,9 @@ The `data/` folder is created automatically on first run.
 
 ### Build from source
 
+<details>
+<summary>Instructions</summary>
+
 You need Go 1.21+ and Windows.
 
 ```bash
@@ -65,6 +72,8 @@ Or use the build script — it puts everything into `dist/`:
 ```bash
 build.bat
 ```
+
+</details>
 
 ---
 
@@ -167,7 +176,8 @@ Starts an HTTP server on `127.0.0.1:7432` for integration with external applicat
 
 ## API Reference
 
-All endpoints are local-only (`127.0.0.1:7432`).
+<details>
+<summary>All endpoints are local-only (127.0.0.1:7432)</summary>
 
 ### GET /api/status
 
@@ -255,6 +265,8 @@ Starts watchdog in the background. Returns immediately.
 { "status": "stopped" }
 ```
 
+</details>
+
 ---
 
 ## Configuration
@@ -315,6 +327,9 @@ Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `
 
 ## Troubleshooting
 
+<details>
+<summary>Common issues</summary>
+
 **"No known strategies. Run --find"** — the knowledge base is empty or has no entries for your ISP. Run `--find`.
 
 **"No working strategy found"** — nothing passed the score threshold. Check your connection or increase `test_timeout` in config.json.
@@ -324,6 +339,8 @@ Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `
 **"failed to start winws"** — `assets/winws.exe` not found or missing administrator rights.
 
 **409 in API** — another operation is in progress. Wait or stop it via `POST /api/stop`.
+
+</details>
 
 ---
 
