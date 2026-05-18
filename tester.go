@@ -19,18 +19,17 @@ var defaultTargets = []TestTarget{
 	{"Google",  "https://www.google.com/generate_204"},
 }
 
-// Strategy holds winws arguments for a single run
+// Strategy holds winws arguments for a single run.
 type Strategy struct {
 	Name string
 	Args []string
 }
 
-// TestResult holds the outcome of a single test run
+// TestResult holds the outcome of a single test run.
 type TestResult struct {
 	Score   float64 // 0.0 to 1.0
 	Details map[string]bool
 }
-
 
 // StopWinws kills all running winws.exe processes
 func StopWinws() error {

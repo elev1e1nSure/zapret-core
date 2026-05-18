@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -98,9 +97,7 @@ func downloadFile(url, destPath string) error {
 
 // listsDirPath returns absolute path to lists/ directory
 func listsDirPath() string {
-	_, file, _, _ := runtime.Caller(0)
-	root := filepath.Dir(file)
-	return filepath.Join(root, "..", "lists")
+	return filepath.Join(exeDir(), "lists")
 }
 
 // GitHubRelease represents a GitHub release API response

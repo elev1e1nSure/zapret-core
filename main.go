@@ -59,18 +59,18 @@ func main() {
 		runReset()
 	case "--export":
 		printBanner()
-		filepath := ""
+		exportPath := ""
 		if len(os.Args) > 2 {
-			filepath = os.Args[2]
+			exportPath = os.Args[2]
 		}
-		runExport(filepath)
+		runExport(exportPath)
 	case "--import":
 		printBanner()
-		filepath := ""
+		importPath := ""
 		if len(os.Args) > 2 {
-			filepath = os.Args[2]
+			importPath = os.Args[2]
 		}
-		runImport(filepath)
+		runImport(importPath)
 	default:
 		printBanner()
 		logInfo("Usage:")
@@ -203,7 +203,7 @@ func runStop() {
 func runWatch() {
 	logInfo("Starting watchdog...")
 	provider := GetProvider()
-	logInfo("Провайдер: %s (%s)", provider.ASN, provider.Org)
+	logInfo("Provider: %s (%s)", provider.ASN, provider.Org)
 
 	kb, err := LoadKnowledge()
 	if err != nil {
@@ -217,7 +217,7 @@ func runWatch() {
 // runServer starts the HTTP API server
 func runServer() {
 	provider := GetProvider()
-	logInfo("Провайдер: %s (%s)", provider.ASN, provider.Org)
+	logInfo("Provider: %s (%s)", provider.ASN, provider.Org)
 
 	kb, err := LoadKnowledge()
 	if err != nil {

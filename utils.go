@@ -1,15 +1,25 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 )
+
+// exeDir returns the directory of the running executable.
+// Falls back to the current working directory on error.
+func exeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		cwd, _ := os.Getwd()
+		return cwd
+	}
+	return filepath.Dir(exe)
+}
 
 // assetsDir returns absolute path to assets/
 func assetsDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	root := filepath.Dir(file)
-	return filepath.Join(root, "assets")
+	return filepath.Join(exeDir(), "assets")
 }
 
 // winwsPath returns absolute path to winws.exe
@@ -22,29 +32,17 @@ func fake(filename string) string {
 	return filepath.Join(assetsDir(), "fake", filename)
 }
 
-// lists returns absolute path to a file in ../lists/
+// lists returns absolute path to a file in lists/
 func lists(filename string) string {
-	root := filepath.Dir(winwsPath())
-	return filepath.Join(root, "..", "lists", filename)
+	return filepath.Join(exeDir(), "lists", filename)
 }
 
-// containsHelper checks if substr exists in s (naive implementation)
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// contains checks if substr exists in s
+// contains reports whether substr is within s.
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(s) > 0 && containsHelper(s, substr))
+	return strings.Contains(s, substr)
 }
 
-// containsStr checks if substr exists in s (alias for contains)
+// containsStr reports whether substr is within s.
 func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && containsHelper(s, substr)
+	return strings.Contains(s, substr)
 }
