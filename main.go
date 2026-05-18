@@ -7,9 +7,13 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 )
 
+var startTime time.Time
+
 func main() {
+	startTime = time.Now()
 	attachConsole()
 	cleanupUpdateArtifacts()
 

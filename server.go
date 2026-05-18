@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -87,6 +88,13 @@ type HealthResponse struct {
 	Version string `json:"version"`
 }
 
+type InfoResponse struct {
+	Version       string  `json:"version"`
+	Platform      string  `json:"platform"`
+	Arch          string  `json:"arch"`
+	UptimeSeconds float64 `json:"uptime_seconds"`
+}
+
 type StatusEvent struct {
 	Type string `json:"type"`
 	Data struct {
@@ -135,6 +143,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/knowledge", srv.handleKnowledge)
 	mux.HandleFunc("/api/version", srv.handleVersion)
 	mux.HandleFunc("/api/health", srv.handleHealth)
+	mux.HandleFunc("/api/info", srv.handleInfo)
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -414,6 +423,23 @@ func (s *APIServer) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.sendJSON(w, http.StatusOK, Cfg)
+}
+
+func (s *APIServer) handleInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	uptime := time.Since(startTime).Seconds()
+
+	resp := InfoResponse{
+		Version:       Version,
+		Platform:      runtime.GOOS,
+		Arch:          runtime.GOARCH,
+		UptimeSeconds: uptime,
+	}
+	s.sendJSON(w, http.StatusOK, resp)
 }
 
 func (s *APIServer) handleStart(w http.ResponseWriter, r *http.Request) {
