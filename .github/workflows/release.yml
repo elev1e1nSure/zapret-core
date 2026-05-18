@@ -49,10 +49,14 @@ jobs:
       
       - name: Generate Release Notes
         id: release_notes
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $prevTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+          $version = $env:VERSION
+          Write-Host "Version: $version"
+          $prevTag = & git describe --tags --abbrev=0 HEAD^ 2>&1
           if ($LASTEXITCODE -ne 0) { $prevTag = "" }
+          Write-Host "Previous tag: $prevTag"
           
           if ($prevTag) {
             $commits = git log $prevTag..HEAD --pretty=format:"%s"
