@@ -224,7 +224,10 @@ func (s *APIServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
 	logPath := filepath.Join(cwd, "data", "zapret.log")
 
 	// Download mode
@@ -259,7 +262,16 @@ func (s *APIServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 		if line == "" {
 			return
 		}
-		s.sendEvent(w, "log", line, nil)
+		// Parse log level from line
+		level := "info"
+		if strings.Contains(line, "[WARN]") {
+			level = "warn"
+		} else if strings.Contains(line, "[ERROR]") {
+			level = "error"
+		} else if strings.Contains(line, "[OK]") {
+			level = "success"
+		}
+		s.sendEvent(w, "log", line, map[string]string{"level": level})
 		flusher.Flush()
 	}
 

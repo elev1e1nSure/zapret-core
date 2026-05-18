@@ -88,6 +88,11 @@ type HealthResponse struct {
 	Version string `json:"version"`
 }
 
+type UptimeResponse struct {
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	HumanReadable string `json:"human_readable"`
+}
+
 type InfoResponse struct {
 	Version       string  `json:"version"`
 	Platform      string  `json:"platform"`
@@ -143,6 +148,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/knowledge", srv.handleKnowledge)
 	mux.HandleFunc("/api/version", srv.handleVersion)
 	mux.HandleFunc("/api/health", srv.handleHealth)
+	mux.HandleFunc("/api/uptime", srv.handleUptime)
 	mux.HandleFunc("/api/info", srv.handleInfo)
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -156,9 +162,8 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/api/config/reload", srv.handleConfigReload)
+	mux.HandleFunc("/api/config/defaults", srv.handleGetConfigDefaults)
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
-	mux.HandleFunc("/api/shutdown", srv.handleShutdown)
 	mux.HandleFunc("/api/events", srv.handleEvents)
 	mux.HandleFunc("/api/logs", srv.handleLogs)
 
@@ -325,6 +330,29 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.sendJSON(w, http.StatusOK, HealthResponse{OK: true, Version: Version})
 }
 
+func (s *APIServer) handleUptime(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	uptime := time.Since(startTime)
+	uptimeSec := int64(uptime.Seconds())
+
+	hours := uptimeSec / 3600
+	minutes := (uptimeSec % 3600) / 60
+	seconds := uptimeSec % 60
+
+	human := fmt.Sprintf("%dч %dм %dс", hours, minutes, seconds)
+	if hours == 0 {
+		human = fmt.Sprintf("%dм %dс", minutes, seconds)
+	}
+
+	s.sendJSON(w, http.StatusOK, UptimeResponse{
+		UptimeSeconds: uptimeSec,
+		HumanReadable: human,
+	})
+}
+
 func (s *APIServer) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -345,12 +373,46 @@ func (s *APIServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate config values
+	if newCfg.ScoreThreshold < 0 || newCfg.ScoreThreshold > 1 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "ScoreThreshold must be between 0 and 1"})
+		return
+	}
+	if newCfg.FailThreshold < 1 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "FailThreshold must be >= 1"})
+		return
+	}
+	if newCfg.CheckInterval < 1 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "CheckInterval must be >= 1 second"})
+		return
+	}
+	if newCfg.InitDelay < 0 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "InitDelay must be >= 0"})
+		return
+	}
+	if newCfg.TestTimeout < 1 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "TestTimeout must be >= 1 second"})
+		return
+	}
+	if newCfg.TestRuns < 1 {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "TestRuns must be >= 1"})
+		return
+	}
+
 	if err := SaveConfig(newCfg); err != nil {
 		s.sendJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	s.sendJSON(w, http.StatusOK, SuccessResponse{Status: "saved"})
+}
+
+func (s *APIServer) handleGetConfigDefaults(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.sendJSON(w, http.StatusOK, defaultConfig)
 }
 
 func (s *APIServer) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
@@ -502,6 +564,15 @@ func (s *APIServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.sendJSON(w, http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("failed to stop winws: %v", err)})
 		return
+	}
+
+	// Wait for winws to actually stop with 5 second timeout
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !IsWinwsRunning() {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	s.sendJSON(w, http.StatusOK, SuccessResponse{Status: "stopped"})
