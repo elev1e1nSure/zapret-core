@@ -71,10 +71,8 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
@@ -87,8 +85,7 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		newVersion, err := performSelfUpdate(func(stage, msg string) {
-			s.sendSSE(w, "progress", UpdateSelfProgress{Type: stage, Message: msg})
-			flusher.Flush()
+			s.sendEvent(w, stage, msg, nil)
 		})
 		done <- result{newVersion, err}
 	}()
@@ -96,25 +93,17 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 	res := <-done
 
 	if res.err != nil {
-		s.sendSSE(w, "error", ErrorResponse{Error: res.err.Error()})
-		flusher.Flush()
+		s.sendEvent(w, "error", res.err.Error(), nil)
 		return
 	}
 
 	if res.newVersion == "" {
-		s.sendSSE(w, "success", SuccessResponse{
-			Status:  "up_to_date",
-			Message: fmt.Sprintf("Already up to date (%s)", Version),
-		})
-		flusher.Flush()
+		s.sendEvent(w, "up_to_date", fmt.Sprintf("Already up to date (%s)", Version), nil)
 		return
 	}
 
-	s.sendSSE(w, "success", SuccessResponse{
-		Status:  "updated",
-		Message: fmt.Sprintf("Update installed (%s → %s). Please restart the server.", Version, res.newVersion),
-	})
-	flusher.Flush()
+	s.sendEvent(w, "success", fmt.Sprintf("Update installed (%s → %s). Please restart the server.", Version, res.newVersion), nil)
+	s.sendEvent(w, "shutdown", "Server is shutting down for update. Restart to apply.", nil)
 
 	go func() {
 		time.Sleep(200 * time.Millisecond)
@@ -128,11 +117,9 @@ func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

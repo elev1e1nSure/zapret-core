@@ -27,6 +27,9 @@ func attachConsole() {
 	}
 	os.Stdout = conout
 	os.Stderr = conout
+	// PowerShell doesn't newline after the prompt when a windowsgui process exits,
+	// so the first line of our output would appear inline with the prompt.
+	conout.WriteString("\n")
 }
 
 // hideConsoleWindow hides the console window using WinAPI.

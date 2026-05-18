@@ -23,26 +23,26 @@ type UpdateProgress struct {
 }
 
 type APIServer struct {
-	server           *http.Server
-	mu               sync.Mutex
-	subscribersMu    sync.Mutex
-	subscribers      map[string]chan string
-	subscriberCount  uint64
-	opInProgress     bool
-	opType           string
-	watchdogRunning  bool
-	kb               *Knowledge
-	provider         ProviderInfo
-	watchdogCancel   context.CancelFunc
+	server          *http.Server
+	mu              sync.Mutex
+	subscribersMu   sync.Mutex
+	subscribers     map[string]chan string
+	subscriberCount uint64
+	opInProgress    bool
+	opType          string
+	watchdogRunning bool
+	kb              *Knowledge
+	provider        ProviderInfo
+	watchdogCancel  context.CancelFunc
 }
 
 type StatusResponse struct {
-	WinwsRunning        bool          `json:"winws_running"`
-	WatchdogRunning     bool          `json:"watchdog_running"`
-	CurrentStrategy     string        `json:"current_strategy"`
-	Provider            ProviderInfo  `json:"provider"`
-	OperationInProgress bool          `json:"operation_in_progress"`
-	OperationType       string        `json:"operation_type"`
+	WinwsRunning        bool         `json:"winws_running"`
+	WatchdogRunning     bool         `json:"watchdog_running"`
+	CurrentStrategy     string       `json:"current_strategy"`
+	Provider            ProviderInfo `json:"provider"`
+	OperationInProgress bool         `json:"operation_in_progress"`
+	OperationType       string       `json:"operation_type"`
 }
 
 type ErrorResponse struct {
@@ -74,9 +74,16 @@ type VersionResponse struct {
 	Version string `json:"version"`
 }
 
-type UpdateSelfProgress struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
+// SSEEvent is the unified envelope for all server-sent events.
+type SSEEvent struct {
+	Type    string      `json:"type"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+type HealthResponse struct {
+	OK      bool   `json:"ok"`
+	Version string `json:"version"`
 }
 
 type StatusEvent struct {
@@ -86,6 +93,19 @@ type StatusEvent struct {
 		Watchdog bool   `json:"watchdog"`
 		Strategy string `json:"strategy"`
 	} `json:"data"`
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
@@ -113,12 +133,13 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/provider", srv.handleProvider)
 	mux.HandleFunc("/api/knowledge", srv.handleKnowledge)
 	mux.HandleFunc("/api/version", srv.handleVersion)
+	mux.HandleFunc("/api/health", srv.handleHealth)
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
 	mux.HandleFunc("/api/events", srv.handleEvents)
 
 	srv.server = &http.Server{
 		Addr:    ":7432",
-		Handler: mux,
+		Handler: corsMiddleware(mux),
 	}
 
 	return srv
@@ -133,14 +154,14 @@ func (s *APIServer) Start(addr string) error {
 func (s *APIServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	s.mu.Lock()
 	if s.watchdogCancel != nil {
 		s.watchdogCancel()
 		s.watchdogCancel = nil
 	}
 	s.mu.Unlock()
-	
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -172,20 +193,17 @@ func (s *APIServer) clearOperation() {
 	s.opType = ""
 }
 
-func (s *APIServer) sendSSE(w http.ResponseWriter, event string, data interface{}) error {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
-	jsonData, err := json.Marshal(data)
+// sendEvent writes a unified SSEEvent envelope to the stream.
+func (s *APIServer) sendEvent(w http.ResponseWriter, evType, message string, data interface{}) {
+	env := SSEEvent{Type: evType, Message: message, Data: data}
+	jsonData, err := json.Marshal(env)
 	if err != nil {
-		return err
+		return
 	}
-	
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
-	w.(http.Flusher).Flush()
-	return nil
+	fmt.Fprintf(w, "data: %s\n\n", jsonData)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func (s *APIServer) sendJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -272,6 +290,14 @@ func (s *APIServer) handleVersion(w http.ResponseWriter, r *http.Request) {
 		Version: Version,
 	}
 	s.sendJSON(w, http.StatusOK, resp)
+}
+
+func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.sendJSON(w, http.StatusOK, HealthResponse{OK: true, Version: Version})
 }
 
 func (s *APIServer) handleStart(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +421,7 @@ func (s *APIServer) handleWatchdogStop(w http.ResponseWriter, r *http.Request) {
 		s.sendJSON(w, http.StatusConflict, ErrorResponse{Error: "watchdog not running"})
 		return
 	}
-	
+
 	if s.watchdogCancel != nil {
 		s.watchdogCancel()
 		s.watchdogCancel = nil
@@ -432,29 +458,23 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 	s.setOperation("find")
 	defer s.clearOperation()
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	progressChan := make(chan FindProgress, 10)
 
-	// Check conflicts first
 	conflicts := CheckConflicts()
 	if len(conflicts) > 0 {
-		s.sendSSE(w, "error", ErrorResponse{Error: fmt.Sprintf("conflicts detected: %v", conflicts)})
-		flusher.Flush()
+		s.sendEvent(w, "error", fmt.Sprintf("conflicts detected: %v", conflicts), nil)
 		return
 	}
 
-	// Start optimizer in goroutine
 	go func() {
 		opt := NewOptimizerWithProgress(s.provider.ASN, s.kb, progressChan)
 		result, vector := opt.Run()
@@ -476,24 +496,20 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 		close(progressChan)
 	}()
 
-	// Stream progress
 	for progress := range progressChan {
 		if progress.Current == sentinelSuccess {
-			s.sendSSE(w, "success", FindSuccessResponse{
-				Strategy: VectorToStrategy(s.kb.BestForASN(s.provider.ASN, 1)[0], 0),
+			best := s.kb.BestForASN(s.provider.ASN, 1)
+			s.sendEvent(w, "success", "Strategy found", FindSuccessResponse{
+				Strategy: VectorToStrategy(best[0], 0),
 				Score:    1.0,
-				Vector:   s.kb.BestForASN(s.provider.ASN, 1)[0],
+				Vector:   best[0],
 			})
-			flusher.Flush()
 			return
 		} else if progress.Current == sentinelError {
-			s.sendSSE(w, "error", ErrorResponse{Error: "no working strategy found"})
-			flusher.Flush()
+			s.sendEvent(w, "error", "no working strategy found", nil)
 			return
 		}
-
-		s.sendSSE(w, "progress", progress)
-		flusher.Flush()
+		s.sendEvent(w, "progress", fmt.Sprintf("[%d/%d] Testing: %s", progress.Current, progress.Total, progress.Strategy), progress)
 	}
 }
 
@@ -510,21 +526,17 @@ func (s *APIServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	s.setOperation("update")
 	defer s.clearOperation()
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	progressChan := make(chan UpdateProgress, 10)
 
-	// Start update in goroutine
 	go func() {
 		err := UpdateLists(func(current, total int, filename string) {
 			progressChan <- UpdateProgress{
@@ -535,34 +547,21 @@ func (s *APIServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		})
 
 		if err != nil {
-			progressChan <- UpdateProgress{
-				Current:  sentinelError,
-				Total:    0,
-				Filename: err.Error(),
-			}
+			progressChan <- UpdateProgress{Current: sentinelError, Filename: err.Error()}
 		} else {
-			progressChan <- UpdateProgress{
-				Current:  sentinelSuccess,
-				Total:    0,
-				Filename: "",
-			}
+			progressChan <- UpdateProgress{Current: sentinelSuccess}
 		}
 		close(progressChan)
 	}()
 
-	// Stream progress
 	for progress := range progressChan {
 		if progress.Current == sentinelError {
-			s.sendSSE(w, "error", ErrorResponse{Error: progress.Filename})
-			flusher.Flush()
+			s.sendEvent(w, "error", progress.Filename, nil)
 			return
 		} else if progress.Current == sentinelSuccess {
-			s.sendSSE(w, "success", SuccessResponse{Status: "updated", Message: "lists updated successfully"})
-			flusher.Flush()
+			s.sendEvent(w, "success", "lists updated successfully", nil)
 			return
 		}
-
-		s.sendSSE(w, "progress", progress)
-		flusher.Flush()
+		s.sendEvent(w, "progress", fmt.Sprintf("[%d/%d] Updating %s...", progress.Current, progress.Total, progress.Filename), progress)
 	}
 }
