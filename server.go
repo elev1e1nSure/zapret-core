@@ -147,6 +147,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	mux.HandleFunc("/api/config/reload", srv.handleConfigReload)
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
 	mux.HandleFunc("/api/shutdown", srv.handleShutdown)
 	mux.HandleFunc("/api/events", srv.handleEvents)
@@ -399,6 +400,20 @@ func (s *APIServer) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+func (s *APIServer) handleConfigReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := LoadConfig(); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	s.sendJSON(w, http.StatusOK, Cfg)
 }
 
 func (s *APIServer) handleStart(w http.ResponseWriter, r *http.Request) {
