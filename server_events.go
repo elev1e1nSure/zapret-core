@@ -195,14 +195,20 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 		newExePath := filepath.Join(exeDir, "zapret-core.exe.new")
 		if err := extractExe(zipPath, newExePath); err != nil {
 			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Extraction failed: %v", err)}
+			os.Remove(zipPath)
+			os.Remove(checksumPath)
 			close(progressChan)
 			return
 		}
-		defer os.Remove(newExePath)
+
+		// Clean up zip and checksums before applying update
+		os.Remove(zipPath)
+		os.Remove(checksumPath)
 
 		// Apply update
 		if err := applyUpdate(newExePath, remoteVersion); err != nil {
 			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to apply update: %v", err)}
+			os.Remove(newExePath)
 			close(progressChan)
 			return
 		}

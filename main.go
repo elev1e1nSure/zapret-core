@@ -454,13 +454,13 @@ func runSelfUpdate() {
 		logError("Download failed: %v", err)
 		os.Exit(1)
 	}
-	defer os.Remove(zipPath)
-	defer os.Remove(checksumPath)
 
 	// Parse checksum
 	expectedHash, err := parseChecksum(checksumPath, zipFilename)
 	if err != nil {
 		logError("Failed to parse checksum: %v", err)
+		os.Remove(zipPath)
+		os.Remove(checksumPath)
 		os.Exit(1)
 	}
 
@@ -468,6 +468,8 @@ func runSelfUpdate() {
 	logInfo("Verifying download...")
 	if err := verifySHA256(zipPath, expectedHash); err != nil {
 		logError("Verification failed: %v", err)
+		os.Remove(zipPath)
+		os.Remove(checksumPath)
 		os.Exit(1)
 	}
 
@@ -477,13 +479,19 @@ func runSelfUpdate() {
 	newExePath := filepath.Join(exeDir, "zapret-core.exe.new")
 	if err := extractExe(zipPath, newExePath); err != nil {
 		logError("Extraction failed: %v", err)
+		os.Remove(zipPath)
+		os.Remove(checksumPath)
 		os.Exit(1)
 	}
-	defer os.Remove(newExePath)
+
+	// Clean up zip and checksums before applying update
+	os.Remove(zipPath)
+	os.Remove(checksumPath)
 
 	// Apply update
 	if err := applyUpdate(newExePath, remoteVersion); err != nil {
 		logError("Failed to apply update: %v", err)
+		os.Remove(newExePath)
 		os.Exit(1)
 	}
 }
