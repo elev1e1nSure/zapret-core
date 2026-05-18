@@ -45,7 +45,7 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          $version = $env:GITHUB_REF -replace "refs/tags/", ""
+          $version = git describe --tags --abbrev=0
           Write-Output "VERSION=$version" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
