@@ -16,18 +16,18 @@ type TestTarget struct {
 var defaultTargets = []TestTarget{
 	{"YouTube", "https://www.youtube.com/generate_204"},
 	{"Discord", "https://discord.com/api/v10/gateway"},
-	{"Google",  "https://www.google.com/generate_204"},
+	{"Google", "https://www.google.com/generate_204"},
 }
 
-// Strategy holds winws arguments for a single run.
+// Strategy represents a DPI bypass strategy with its winws command-line arguments
 type Strategy struct {
 	Name string
 	Args []string
 }
 
-// TestResult holds the outcome of a single test run.
+// TestResult contains the success score and per-target details for a strategy test
 type TestResult struct {
-	Score   float64 // 0.0 to 1.0
+	Score   float64
 	Details map[string]bool
 }
 
@@ -40,18 +40,18 @@ func StopWinws() error {
 			return fmt.Errorf("taskkill winws.exe: %w", err)
 		}
 	}
-	time.Sleep(1 * time.Second) // wait for WinDivert handle release
+	time.Sleep(1 * time.Second)
 	return nil
 }
 
-// IsWinwsRunning checks if winws.exe is currently running
+// IsWinwsRunning checks if winws.exe process is currently running
 func IsWinwsRunning() bool {
 	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq winws.exe")
-	out, err := cmd.Output()
+	output, err := cmd.Output()
 	if err != nil {
 		return false
 	}
-	return len(out) > 0 && contains(string(out), "winws.exe")
+	return len(output) > 0
 }
 
 // StartWinws launches winws.exe with the given strategy arguments
@@ -65,8 +65,7 @@ func StartWinws(s *Strategy) error {
 	return nil
 }
 
-// TestStrategy runs a full test cycle for a strategy and returns a score
-// It stops winws, starts it with new args, waits, then checks targets
+// TestStrategy tests a strategy by running winws and checking connectivity to test targets
 func TestStrategy(s *Strategy) TestResult {
 	StopWinws()
 
@@ -77,7 +76,6 @@ func TestStrategy(s *Strategy) TestResult {
 
 	time.Sleep(Cfg.InitDelayDuration())
 
-	// Run testRuns passes and average the score
 	totalScore := 0.0
 	lastDetails := map[string]bool{}
 
@@ -123,7 +121,7 @@ func checkTargets() (float64, map[string]bool) {
 	return score, details
 }
 
-// printTestResult prints a human-readable summary of test results
+// printTestResult logs a human-readable summary of test results
 func printTestResult(name string, score float64, details map[string]bool) {
 	logInfo("[%s] score=%.2f", name, score)
 	for _, t := range defaultTargets {
@@ -146,7 +144,7 @@ func CheckConflicts() []string {
 		"winws1",
 		"winws2",
 		"TracSrvWrapper", // Check Point
-		"EPWD",          // Check Point
+		"EPWD",           // Check Point
 	}
 
 	for _, svc := range services {

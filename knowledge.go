@@ -11,11 +11,11 @@ import (
 
 // KnowledgeEntry records a strategy that worked for a given ASN
 type KnowledgeEntry struct {
-	Vector    StrategyVector `json:"vector"`
-	ASN       string         `json:"asn"`
-	Score     float64        `json:"score"`
-	Hits      int            `json:"hits"`   // times confirmed working
-	LastSeen  time.Time      `json:"last_seen"`
+	Vector   StrategyVector `json:"vector"`
+	ASN      string         `json:"asn"`
+	Score    float64        `json:"score"`
+	Hits     int            `json:"hits"` // times confirmed working
+	LastSeen time.Time      `json:"last_seen"`
 }
 
 // Knowledge is the full persistent store
@@ -26,7 +26,10 @@ type Knowledge struct {
 
 // knowledgePath returns absolute path to data/knowledge.json
 func knowledgePath() string {
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
 	return filepath.Join(cwd, "data", "knowledge.json")
 }
 
@@ -56,15 +59,18 @@ func LoadKnowledge() (*Knowledge, error) {
 // Save writes current state to disk
 func (k *Knowledge) Save() error {
 	if err := os.MkdirAll(filepath.Dir(k.path), 0755); err != nil {
-		return err
+		return fmt.Errorf("create knowledge dir: %w", err)
 	}
 
 	data, err := json.MarshalIndent(k, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal knowledge: %w", err)
 	}
 
-	return os.WriteFile(k.path, data, 0644)
+	if err := os.WriteFile(k.path, data, 0644); err != nil {
+		return fmt.Errorf("write knowledge: %w", err)
+	}
+	return nil
 }
 
 // Record saves a working strategy result
@@ -75,7 +81,9 @@ func (k *Knowledge) Record(asn string, v StrategyVector, score float64) {
 			k.Entries[i].Score = (e.Score*float64(e.Hits) + score) / float64(e.Hits+1)
 			k.Entries[i].Hits++
 			k.Entries[i].LastSeen = time.Now()
-			_ = k.Save()
+			if err := k.Save(); err != nil {
+				logWarn("Failed to save knowledge: %v", err)
+			}
 			return
 		}
 	}
@@ -87,7 +95,9 @@ func (k *Knowledge) Record(asn string, v StrategyVector, score float64) {
 		Hits:     1,
 		LastSeen: time.Now(),
 	})
-	_ = k.Save()
+	if err := k.Save(); err != nil {
+		logWarn("Failed to save knowledge: %v", err)
+	}
 }
 
 // BestForASN returns top N strategies for a given ASN, sorted by score*hits
@@ -106,7 +116,7 @@ func (k *Knowledge) BestForASN(asn string, n int) []StrategyVector {
 		candidates = append(candidates, k.Entries...)
 	}
 
-	// Sort by score * log(hits+1) — prefer both high score and confirmed multiple times
+	// Sort by score * log(hits+1) — prefer both high score and strategies confirmed multiple times
 	sort.Slice(candidates, func(i, j int) bool {
 		wi := candidates[i].Score * float64(candidates[i].Hits+1)
 		wj := candidates[j].Score * float64(candidates[j].Hits+1)
@@ -159,8 +169,8 @@ func vectorsEqual(a, b StrategyVector) bool {
 
 // ExportFormat wraps knowledge entries with metadata for export/import
 type ExportFormat struct {
-	ExportedAt string          `json:"exported_at"`
-	EntryCount int             `json:"entry_count"`
+	ExportedAt string           `json:"exported_at"`
+	EntryCount int              `json:"entry_count"`
 	Entries    []KnowledgeEntry `json:"entries"`
 }
 

@@ -27,21 +27,16 @@ func attachConsole() {
 	}
 	os.Stdout = conout
 	os.Stderr = conout
-	// PowerShell doesn't newline after the prompt when a windowsgui process exits,
-	// so the first line of our output would appear inline with the prompt.
-	conout.WriteString("\n")
 }
 
-// hideConsoleWindow hides the console window using WinAPI.
-// Called before any log output in daemon modes (--server, --watch) to prevent window flash.
+// hideConsoleWindow hides the console window for GUI applications
 func hideConsoleWindow() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	user32 := syscall.NewLazyDLL("user32.dll")
 	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
-	showWindow := user32.NewProc("ShowWindow")
+	showWindowProc := kernel32.NewProc("ShowWindow")
 	hwnd, _, _ := getConsoleWindow.Call()
 	if hwnd != 0 {
-		showWindow.Call(hwnd, 0) // SW_HIDE = 0
+		showWindowProc.Call(hwnd, 0) // SW_HIDE = 0
 	}
 }
 
@@ -50,7 +45,10 @@ func hideConsoleWindow() {
 func exeDir() string {
 	exe, err := os.Executable()
 	if err != nil {
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "."
+		}
 		return cwd
 	}
 	return filepath.Dir(exe)
@@ -66,29 +64,29 @@ func exePath() string {
 	return exe
 }
 
-// assetsDir returns absolute path to assets/
+// assetsDir returns the path to the assets directory
 func assetsDir() string {
 	return filepath.Join(exeDir(), "assets")
 }
 
-// winwsPath returns absolute path to winws.exe
+// winwsPath returns the path to winws.exe
 func winwsPath() string {
 	return filepath.Join(assetsDir(), "winws.exe")
 }
 
-// fake returns absolute path to a file in assets/fake/
+// fake returns the path to a fake packet binary
 func fake(filename string) string {
 	return filepath.Join(assetsDir(), "fake", filename)
 }
 
-// lists returns absolute path to a file in lists/
+// lists returns the path to a list file
 func lists(filename string) string {
 	return filepath.Join(exeDir(), "lists", filename)
 }
 
-// contains reports whether substr is within s.
+// contains checks if s starts with substr
 func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
+	return len(s) >= len(substr) && s[:len(substr)] == substr
 }
 
 // containsStr reports whether substr is within s.

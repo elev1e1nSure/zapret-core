@@ -8,17 +8,18 @@ import (
 	"time"
 )
 
-// Config holds all tunable parameters
+// Config holds all tunable parameters for the application.
+// All values are loaded from data/config.json at startup.
 type Config struct {
-	ScoreThreshold float64 `json:"score_threshold"` // min score to accept strategy
-	FailThreshold  int     `json:"fail_threshold"`  // watchdog consecutive failures before recovery
-	CheckInterval  int     `json:"check_interval"`  // watchdog probe interval, seconds
-	InitDelay      int     `json:"init_delay"`      // seconds to wait after winws start
-	TestTimeout    int     `json:"test_timeout"`    // seconds per HTTP test target
-	TestRuns       int     `json:"test_runs"`       // repeat test N times for stability
+	ScoreThreshold float64 `json:"score_threshold"` // Minimum score to accept a strategy
+	FailThreshold  int     `json:"fail_threshold"`  // Failures before triggering recovery
+	CheckInterval  int     `json:"check_interval"`  // Seconds between watchdog checks
+	InitDelay      int     `json:"init_delay"`      // Delay before first watchdog check
+	TestTimeout    int     `json:"test_timeout"`    // Seconds per strategy test
+	TestRuns       int     `json:"test_runs"`       // Test repetitions for reliability
 }
 
-// defaults used when config.json is absent or a field is zero
+// defaultConfig contains the default configuration values used when config.json is absent
 var defaultConfig = Config{
 	ScoreThreshold: 0.6,
 	FailThreshold:  3,
@@ -28,17 +29,20 @@ var defaultConfig = Config{
 	TestRuns:       2,
 }
 
-// Cfg is the active configuration, loaded once at startup
+// Cfg is the active configuration, loaded once at startup and modified via HTTP API
 var Cfg = defaultConfig
 
 // configPath returns absolute path to data/config.json
 func configPath() string {
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
 	return filepath.Join(cwd, "data", "config.json")
 }
 
-// LoadConfig reads data/config.json and merges into Cfg
-// If file doesn't exist, creates it with defaults
+// LoadConfig reads data/config.json and merges into Cfg.
+// If file doesn't exist, creates it with defaults.
 func LoadConfig() error {
 	path := configPath()
 
@@ -48,10 +52,12 @@ func LoadConfig() error {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return fmt.Errorf("create config dir: %w", err)
 		}
+
 		defaultData, err := json.MarshalIndent(defaultConfig, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal default config: %w", err)
 		}
+
 		if err := os.WriteFile(path, defaultData, 0644); err != nil {
 			return fmt.Errorf("write default config: %w", err)
 		}
@@ -73,10 +79,16 @@ func LoadConfig() error {
 	return nil
 }
 
+// CheckIntervalDuration returns the check interval as a time.Duration
 func (c Config) CheckIntervalDuration() time.Duration { return secs(c.CheckInterval) }
-func (c Config) InitDelayDuration() time.Duration     { return secs(c.InitDelay) }
-func (c Config) TestTimeoutDuration() time.Duration   { return secs(c.TestTimeout) }
 
+// InitDelayDuration returns the init delay as a time.Duration
+func (c Config) InitDelayDuration() time.Duration { return secs(c.InitDelay) }
+
+// TestTimeoutDuration returns the test timeout as a time.Duration
+func (c Config) TestTimeoutDuration() time.Duration { return secs(c.TestTimeout) }
+
+// secs converts an integer to a time.Duration in seconds
 func secs(n int) time.Duration { return time.Duration(n) * time.Second }
 
 // SaveConfig writes the given config to data/config.json atomically.
@@ -98,6 +110,5 @@ func SaveConfig(cfg Config) error {
 		return fmt.Errorf("rename temp config: %w", err)
 	}
 
-	Cfg = cfg
 	return nil
 }
