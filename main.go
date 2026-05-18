@@ -8,13 +8,13 @@ import (
 
 func main() {
 	if err := initLogger(); err != nil {
-		fmt.Printf("\033[31m[!] Ошибка инициализации логгера: %v\033[0m\n", err)
+		fmt.Printf("\033[31m[!] Logger initialization error: %v\033[0m\n", err)
 		os.Exit(1)
 	}
 	defer closeLogger()
 
 	if err := LoadConfig(); err != nil {
-		logError("Ошибка загрузки конфига: %v", err)
+		logError("Config loading error: %v", err)
 		os.Exit(1)
 	}
 
@@ -45,98 +45,98 @@ func main() {
 		runUpdate()
 	default:
 		printBanner()
-		logInfo("Использование:")
-		logInfo("  zapret-core           — запустить лучшую известную стратегию")
-		logInfo("  zapret-core --find    — найти рабочую стратегию")
-		logInfo("  zapret-core --status  — показать статус")
-		logInfo("  zapret-core --stop    — остановить")
-		logInfo("  zapret-core --watch   — мониторинг + автоподбор при поломке")
-		logInfo("  zapret-core --server  — запустить HTTP API сервер на :7432")
-		logInfo("  zapret-core --update  — обновить списки из GitHub")
+		logInfo("Usage:")
+		logInfo("  zapret-core           — run best known strategy")
+		logInfo("  zapret-core --find    — find working strategy")
+		logInfo("  zapret-core --status  — show status")
+		logInfo("  zapret-core --stop    — stop")
+		logInfo("  zapret-core --watch   — monitoring + auto-recovery on failure")
+		logInfo("  zapret-core --server  — start HTTP API server on :7432")
+		logInfo("  zapret-core --update  — update lists from GitHub")
 	}
 }
 
 // runBest loads and runs the best known strategy for the current provider
 func runBest() {
-	logInfo("Определяем провайдера...")
+	logInfo("Detecting provider...")
 	provider := GetProvider()
-	logInfo("Провайдер: %s (%s)", provider.ASN, provider.Org)
+	logInfo("Provider: %s (%s)", provider.ASN, provider.Org)
 
 	kb, err := LoadKnowledge()
 	if err != nil {
-		logError("Ошибка загрузки knowledge: %v", err)
+		logError("Knowledge loading error: %v", err)
 		os.Exit(1)
 	}
 
 	vectors := kb.BestForASN(provider.ASN, 1)
 	if len(vectors) == 0 {
-		logWarn("Нет известных стратегий для этого провайдера. Запустите --find")
+		logWarn("No known strategies for this provider. Run --find")
 		os.Exit(1)
 	}
 
 	strategy := VectorToStrategy(vectors[0], 0)
 
-	logInfo("Запускаем стратегию: %s", strategy.Name)
+	logInfo("Starting strategy: %s", strategy.Name)
 	err = StartWinws(strategy)
 	if err != nil {
-		logError("Ошибка запуска: %v", err)
+		logError("Startup error: %v", err)
 		os.Exit(1)
 	}
-	logSuccess("Запущено. Нажмите Ctrl+C для остановки.")
+	logSuccess("Running. Press Ctrl+C to stop.")
 	select {} // block forever
 }
 
 // runFind iterates through strategies to find a working one
 func runFind() {
-	logInfo("Определяем провайдера...")
+	logInfo("Detecting provider...")
 	provider := GetProvider()
-	logInfo("Провайдер: %s (%s)", provider.ASN, provider.Org)
+	logInfo("Provider: %s (%s)", provider.ASN, provider.Org)
 
-	logInfo("Проверяем конфликты...")
+	logInfo("Checking conflicts...")
 	conflicts := CheckConflicts()
 	if len(conflicts) > 0 {
-		logWarn("Обнаружены конфликты:")
+		logWarn("Conflicts detected:")
 		for _, c := range conflicts {
 			logWarn("    - %s", c)
 		}
-		logError("Устраните конфликты и запустите снова.")
+		logError("Resolve conflicts and run again.")
 		os.Exit(1)
 	}
-	logSuccess("Конфликтов нет.")
+	logSuccess("No conflicts.")
 
 	kb, err := LoadKnowledge()
 	if err != nil {
-		logError("Ошибка загрузки knowledge: %v", err)
+		logError("Knowledge loading error: %v", err)
 		os.Exit(1)
 	}
 
 	opt := NewOptimizer(provider.ASN, kb)
 
-	logInfo("Начинаем перебор стратегий...")
+	logInfo("Starting strategy search...")
 	result, vector := opt.Run()
 
 	if result == nil {
-		logError("Рабочая стратегия не найдена.")
+		logError("Working strategy not found.")
 		os.Exit(1)
 	}
 
-	logSuccess("Найдена рабочая стратегия: %s", result.Name)
+	logSuccess("Working strategy found: %s", result.Name)
 	kb.Record(provider.ASN, vector, 1.0)
-	logSuccess("Стратегия сохранена в knowledge.")
+	logSuccess("Strategy saved to knowledge.")
 }
 
 // runStatus shows the current state
 func runStatus() {
 	running := IsWinwsRunning()
 	if running {
-		logInfo("winws запущен")
+		logInfo("winws running")
 	} else {
-		logWarn("winws не запущен")
+		logWarn("winws not running")
 	}
 
 	kb, err := LoadKnowledge()
 	if err != nil {
-		logError("Ошибка загрузки knowledge: %v", err)
+		logError("Knowledge loading error: %v", err)
 		return
 	}
 
@@ -144,30 +144,30 @@ func runStatus() {
 	vectors := kb.BestForASN(provider.ASN, 1)
 	if len(vectors) > 0 {
 		strategy := VectorToStrategy(vectors[0], 0)
-		logInfo("Лучшая известная стратегия для %s: %s", provider.ASN, strategy.Name)
+		logInfo("Best known strategy for %s: %s", provider.ASN, strategy.Name)
 	}
 }
 
 // runStop stops winws
 func runStop() {
-	logInfo("Останавливаем winws...")
+	logInfo("Stopping winws...")
 	err := StopWinws()
 	if err != nil {
-		logError("Ошибка: %v", err)
+		logError("Error: %v", err)
 		os.Exit(1)
 	}
-	logSuccess("Остановлено.")
+	logSuccess("Stopped.")
 }
 
 // runWatch starts watchdog with auto-recovery on failure
 func runWatch() {
-	logInfo("Запускаем watchdog...")
+	logInfo("Starting watchdog...")
 	provider := GetProvider()
 	logInfo("Провайдер: %s (%s)", provider.ASN, provider.Org)
 
 	kb, err := LoadKnowledge()
 	if err != nil {
-		logError("Ошибка загрузки knowledge: %v", err)
+		logError("Knowledge loading error: %v", err)
 		os.Exit(1)
 	}
 
@@ -181,7 +181,7 @@ func runServer() {
 
 	kb, err := LoadKnowledge()
 	if err != nil {
-		logError("Ошибка загрузки knowledge: %v", err)
+		logError("Knowledge loading error: %v", err)
 		os.Exit(1)
 	}
 
@@ -205,16 +205,16 @@ func runServer() {
 
 // runUpdate updates list files from GitHub
 func runUpdate() {
-	logInfo("Обновление списков из GitHub...")
+	logInfo("Updating lists from GitHub...")
 
 	err := UpdateLists(func(current, total int, filename string) {
-		logInfo("[%d/%d] Обновление %s...", current, total, filename)
+		logInfo("[%d/%d] Updating %s...", current, total, filename)
 	})
 
 	if err != nil {
-		logError("Ошибка обновления: %v", err)
+		logError("Update error: %v", err)
 		os.Exit(1)
 	}
 
-	logSuccess("Списки успешно обновлены.")
+	logSuccess("Lists updated successfully.")
 }

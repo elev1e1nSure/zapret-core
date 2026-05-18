@@ -179,7 +179,7 @@ func StartWatchdog(asn string, kb *Knowledge) {
 	signal.Notify(sigCh, os.Interrupt)
 	<-sigCh
 
-	logInfo("Остановка watchdog...")
+	logInfo("Stopping watchdog...")
 	wd.Stop()
 	StopWinws()
 }
