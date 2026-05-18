@@ -140,6 +140,8 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 			srv.handleGetConfig(w, r)
 		case http.MethodPut:
 			srv.handlePutConfig(w, r)
+		case http.MethodPatch:
+			srv.handlePatchConfig(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -328,6 +330,41 @@ func (s *APIServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	var newCfg Config
 	if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
 		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if err := SaveConfig(newCfg); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	s.sendJSON(w, http.StatusOK, SuccessResponse{Status: "saved"})
+}
+
+func (s *APIServer) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var partial map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&partial); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	// Merge partial into current config
+	merged := Cfg
+	data, _ := json.Marshal(merged)
+	var mergedMap map[string]interface{}
+	json.Unmarshal(data, &mergedMap)
+	for k, v := range partial {
+		mergedMap[k] = v
+	}
+	mergedData, _ := json.Marshal(mergedMap)
+	var newCfg Config
+	if err := json.Unmarshal(mergedData, &newCfg); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid merged config"})
 		return
 	}
 
