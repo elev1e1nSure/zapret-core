@@ -134,6 +134,16 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/knowledge", srv.handleKnowledge)
 	mux.HandleFunc("/api/version", srv.handleVersion)
 	mux.HandleFunc("/api/health", srv.handleHealth)
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			srv.handleGetConfig(w, r)
+		case http.MethodPut:
+			srv.handlePutConfig(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
 	mux.HandleFunc("/api/events", srv.handleEvents)
 	mux.HandleFunc("/api/logs", srv.handleLogs)
@@ -299,6 +309,34 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sendJSON(w, http.StatusOK, HealthResponse{OK: true, Version: Version})
+}
+
+func (s *APIServer) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.sendJSON(w, http.StatusOK, Cfg)
+}
+
+func (s *APIServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var newCfg Config
+	if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if err := SaveConfig(newCfg); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	s.sendJSON(w, http.StatusOK, SuccessResponse{Status: "saved"})
 }
 
 func (s *APIServer) handleStart(w http.ResponseWriter, r *http.Request) {

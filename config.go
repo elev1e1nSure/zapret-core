@@ -74,7 +74,30 @@ func LoadConfig() error {
 }
 
 func (c Config) CheckIntervalDuration() time.Duration { return secs(c.CheckInterval) }
-func (c Config) InitDelayDuration() time.Duration      { return secs(c.InitDelay) }
-func (c Config) TestTimeoutDuration() time.Duration    { return secs(c.TestTimeout) }
+func (c Config) InitDelayDuration() time.Duration     { return secs(c.InitDelay) }
+func (c Config) TestTimeoutDuration() time.Duration   { return secs(c.TestTimeout) }
 
 func secs(n int) time.Duration { return time.Duration(n) * time.Second }
+
+// SaveConfig writes the given config to data/config.json atomically.
+func SaveConfig(cfg Config) error {
+	path := configPath()
+	tmpPath := path + ".tmp"
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("write temp config: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename temp config: %w", err)
+	}
+
+	Cfg = cfg
+	return nil
+}
