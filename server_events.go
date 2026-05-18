@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -209,4 +212,104 @@ func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// handleLogs streams the log file as SSE.
+// Query param: ?lines=N (default 100) — how many recent lines to send first.
+// After the backlog, new lines are pushed as they are written.
+func (s *APIServer) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tail := 100
+	if v := r.URL.Query().Get("lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			tail = n
+		}
+	}
+
+	cwd, _ := os.Getwd()
+	logPath := filepath.Join(cwd, "data", "zapret.log")
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	sendLine := func(line string) {
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			return
+		}
+		s.sendEvent(w, "log", line, nil)
+		flusher.Flush()
+	}
+
+	// Read backlog: last `tail` lines.
+	if lines, err := readLastLines(logPath, tail); err == nil {
+		for _, l := range lines {
+			sendLine(l)
+		}
+	}
+
+	// Tail: open file, seek to end, poll for new data every 250ms.
+	f, err := os.Open(logPath)
+	if err != nil {
+		s.sendEvent(w, "error", fmt.Sprintf("cannot open log: %v", err), nil)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return
+	}
+
+	reader := bufio.NewReader(f)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for {
+				line, err := reader.ReadString('\n')
+				if len(line) > 0 {
+					sendLine(line)
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+	}
+}
+
+// readLastLines returns up to n last lines from a file efficiently.
+func readLastLines(path string, n int) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if len(lines) > n {
+			lines = lines[1:]
+		}
+	}
+	return lines, scanner.Err()
 }

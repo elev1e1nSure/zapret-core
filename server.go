@@ -136,6 +136,7 @@ func NewAPIServer(kb *Knowledge, provider ProviderInfo) *APIServer {
 	mux.HandleFunc("/api/health", srv.handleHealth)
 	mux.HandleFunc("/api/update-self", srv.handleUpdateSelf)
 	mux.HandleFunc("/api/events", srv.handleEvents)
+	mux.HandleFunc("/api/logs", srv.handleLogs)
 
 	srv.server = &http.Server{
 		Addr:    ":7432",
