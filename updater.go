@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -165,7 +166,24 @@ func checkForUpdate() (string, error) {
 		return "", nil // up to date
 	}
 
-	return release.TagName, nil
+	// Compare versions numerically
+	localParts := strings.Split(localVersion, ".")
+	remoteParts := strings.Split(remoteVersion, ".")
+
+	for i := 0; i < 3; i++ {
+		if i >= len(localParts) || i >= len(remoteParts) {
+			break
+		}
+		localNum, _ := strconv.Atoi(localParts[i])
+		remoteNum, _ := strconv.Atoi(remoteParts[i])
+		if remoteNum > localNum {
+			return release.TagName, nil // update available
+		} else if remoteNum < localNum {
+			return "", nil // local is newer
+		}
+	}
+
+	return "", nil // versions are equal or local is newer
 }
 
 // downloadRelease downloads zip and checksums.txt to exeDir
