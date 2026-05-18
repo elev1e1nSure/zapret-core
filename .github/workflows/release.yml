@@ -54,10 +54,8 @@ jobs:
       
       - name: Generate Release Notes
         id: release_notes
-        env:
-          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          $version = $env:VERSION
+          $version = git describe --tags --abbrev=0
           Write-Host "Version: $version"
           $prevTag = & git describe --tags --abbrev=0 HEAD^ 2>&1
           if ($LASTEXITCODE -ne 0) { $prevTag = "" }
