@@ -52,6 +52,16 @@ lists/
 
 The `data/` folder is created automatically on first run.
 
+### Verify download
+
+Each release includes a `checksums.txt` file with SHA256 hashes. To verify your download:
+
+```powershell
+Get-FileHash zapret-core-v1.0.2-windows-amd64.zip -Algorithm SHA256
+```
+
+Compare the output with the hash in `checksums.txt`. If they match, the file is authentic and uncorrupted.
+
 ---
 
 ### Build from source
