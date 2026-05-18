@@ -77,25 +77,25 @@ jobs:
           $other = @()
           
           foreach ($commit in $commits) {
-            if ($commit -match '^feat\((.+)\): (.+)$') {
+            if ($commit -match '^feat\((.+)\):\s+(.+)$') {
               $feat += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^feat: (.+)$') {
+            } elseif ($commit -match '^feat:\s+(.+)$') {
               $feat += "  - $($matches[1])"
-            } elseif ($commit -match '^fix\((.+)\): (.+)$') {
+            } elseif ($commit -match '^fix\((.+)\):\s+(.+)$') {
               $fix += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^fix: (.+)$') {
+            } elseif ($commit -match '^fix:\s+(.+)$') {
               $fix += "  - $($matches[1])"
-            } elseif ($commit -match '^docs\((.+)\): (.+)$') {
+            } elseif ($commit -match '^docs\((.+)\):\s+(.+)$') {
               $docs += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^docs: (.+)$') {
+            } elseif ($commit -match '^docs:\s+(.+)$') {
               $docs += "  - $($matches[1])"
-            } elseif ($commit -match '^refactor\((.+)\): (.+)$') {
+            } elseif ($commit -match '^refactor\((.+)\):\s+(.+)$') {
               $refactor += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^refactor: (.+)$') {
+            } elseif ($commit -match '^refactor:\s+(.+)$') {
               $refactor += "  - $($matches[1])"
-            } elseif ($commit -match '^chore\((.+)\): (.+)$') {
+            } elseif ($commit -match '^chore\((.+)\):\s+(.+)$') {
               $chore += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^chore: (.+)$') {
+            } elseif ($commit -match '^chore:\s+(.+)$') {
               $chore += "  - $($matches[1])"
             } else {
               $other += "  - $commit"
