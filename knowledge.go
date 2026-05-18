@@ -56,7 +56,7 @@ func LoadKnowledge() (*Knowledge, error) {
 	return k, nil
 }
 
-// Save writes current state to disk
+// Save writes current state to disk atomically
 func (k *Knowledge) Save() error {
 	if err := os.MkdirAll(filepath.Dir(k.path), 0755); err != nil {
 		return fmt.Errorf("create knowledge dir: %w", err)
@@ -67,8 +67,13 @@ func (k *Knowledge) Save() error {
 		return fmt.Errorf("marshal knowledge: %w", err)
 	}
 
-	if err := os.WriteFile(k.path, data, 0644); err != nil {
-		return fmt.Errorf("write knowledge: %w", err)
+	tmpPath := k.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("write knowledge tmp: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, k.path); err != nil {
+		return fmt.Errorf("rename knowledge: %w", err)
 	}
 	return nil
 }

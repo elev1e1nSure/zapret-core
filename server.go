@@ -96,8 +96,10 @@ type SSEEvent struct {
 }
 
 type HealthResponse struct {
-	OK      bool   `json:"ok"`
-	Version string `json:"version"`
+	OK                  bool    `json:"ok"`
+	Version             string  `json:"version"`
+	ServerUptimeSeconds float64 `json:"server_uptime_seconds"`
+	WinwsUptimeSeconds  float64 `json:"winws_uptime_seconds"`
 }
 
 type UptimeResponse struct {
@@ -346,7 +348,19 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.sendJSON(w, http.StatusOK, HealthResponse{OK: true, Version: Version})
+
+	serverUptime := time.Since(startTime).Seconds()
+	winwsUptime := 0.0
+	if t := winwsStartUnix.Load(); t != 0 {
+		winwsUptime = float64(time.Now().Unix() - t)
+	}
+
+	s.sendJSON(w, http.StatusOK, HealthResponse{
+		OK:                  true,
+		Version:             Version,
+		ServerUptimeSeconds: serverUptime,
+		WinwsUptimeSeconds:  winwsUptime,
+	})
 }
 
 func (s *APIServer) handleUptime(w http.ResponseWriter, r *http.Request) {

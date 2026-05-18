@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +19,8 @@ var defaultTargets = []TestTarget{
 	{"Discord", "https://discord.com/api/v10/gateway"},
 	{"Google", "https://www.google.com/generate_204"},
 }
+
+var winwsStartUnix atomic.Int64
 
 // Strategy represents a DPI bypass strategy with its winws command-line arguments
 type Strategy struct {
@@ -41,6 +44,7 @@ func StopWinws() error {
 		}
 	}
 	time.Sleep(1 * time.Second)
+	winwsStartUnix.Store(0)
 	return nil
 }
 
@@ -62,6 +66,7 @@ func StartWinws(s *Strategy) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start winws: %w", err)
 	}
+	winwsStartUnix.Store(time.Now().Unix())
 	return nil
 }
 
