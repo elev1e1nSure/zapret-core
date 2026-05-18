@@ -8,7 +8,7 @@
 ![Release](https://img.shields.io/github/v/release/elev1e1nSure/zapret-core)
 ![Downloads](https://img.shields.io/github/downloads/elev1e1nSure/zapret-core/total)
 
-DPI bypass tool for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
+DPI bypass tool for YouTube and Discord on Windows. Finds a working strategy for your ISP automatically, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
 
 Built on top of [zapret](https://github.com/bol-van/zapret) by bol-van and inspired by [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal.
 
@@ -20,11 +20,21 @@ Most DPI bypass tools give you a list of 80+ strategies and say "try them one by
 
 ---
 
+## How it works
+
+1. **ISP detection** — queries `ipinfo.io` to get your ASN (e.g. `AS12389 Rostelecom`). The ASN is used as a key to look up known-good strategies.
+2. **Strategy search** — up to 137 parameter combinations are tested against YouTube, Discord, and Google. Each combination runs winws (from zapret) with specific DPI bypass flags, waits for it to initialize, then probes the targets over HTTP. A score from 0 to 1 is computed from how many targets responded successfully.
+3. **Knowledge base** — once a strategy passes the score threshold, it's saved to `data/knowledge.json` keyed by ASN. On every subsequent run that strategy is tried first — search only happens if it stopped working.
+4. **Watchdog** — a background loop probes YouTube and Discord on a configurable interval. When consecutive failures exceed the threshold, the optimizer runs again and seamlessly switches to a new working strategy.
+5. **Self-update** — compares local version against the latest GitHub release, downloads the zip, verifies SHA256, atomically swaps the binary via a rename-over trick (`.old` → new), and exits. The next run uses the new binary.
+
+---
+
 ## Requirements
 
-- Windows 7+
-- Administrator rights — WinDivert installs a kernel driver, won't work without it
-- Internet connection for ISP detection and testing
+- Windows 7 or later (x64)
+- Administrator rights — WinDivert installs a kernel driver
+- Internet connection for ISP detection, probing, and updates
 
 ---
 
@@ -32,7 +42,7 @@ Most DPI bypass tools give you a list of 80+ strategies and say "try them one by
 
 > **[Download latest release](https://github.com/elev1e1nSure/zapret-core/releases/latest)**
 
-Extract the archive. The structure should look like this:
+Extract the archive anywhere. Required layout:
 
 ```
 zapret-core.exe
@@ -42,25 +52,30 @@ assets/
     WinDivert64.sys
     cygwin1.dll
     fake/
-        *.bin
+        *.bin          ← fake packet payloads used by some strategies
 lists/
-    list-general.txt
+    list-general.txt   ← domains to bypass
     list-google.txt
-    ipset-all.txt
-    ...
+    ipset-all.txt      ← IP ranges
+    ipset-exclude.txt
+    list-exclude.txt
+data/                  ← created automatically on first run
+    config.json
+    knowledge.json
+    zapret.log
 ```
 
-The `data/` folder is created automatically on first run.
+> **Run as Administrator.** Right-click → "Run as administrator", or launch from an elevated terminal.
 
 ### Verify download
 
-Each release includes a `checksums.txt` file with SHA256 hashes. To verify your download:
+Each release includes `checksums.txt` with SHA256 hashes. To verify:
 
 ```powershell
-Get-FileHash zapret-core-v1.0.2-windows-amd64.zip -Algorithm SHA256
+Get-FileHash zapret-core-v1.2.11-windows-amd64.zip -Algorithm SHA256
 ```
 
-Compare the output with the hash in `checksums.txt`. If they match, the file is authentic and uncorrupted.
+Compare the output against `checksums.txt`. Matching means the file is authentic and uncorrupted.
 
 ---
 
@@ -69,7 +84,7 @@ Compare the output with the hash in `checksums.txt`. If they match, the file is 
 <details>
 <summary>Instructions</summary>
 
-You need Go 1.21+ and Windows.
+Requires Go 1.21+ and Windows.
 
 ```bash
 git clone https://github.com/elev1e1nSure/zapret-core.git
@@ -77,7 +92,9 @@ cd zapret-core
 go build -o zapret-core.exe .
 ```
 
-Or use the build script — it puts everything into `dist/`:
+Note: local builds are console-mode binaries (show output in terminal). Release builds use `-H windowsgui` so no console window appears when launched outside a terminal — this is intentional for use with a UI wrapper.
+
+Or use the build script which puts everything into `dist/`:
 
 ```bash
 build.bat
@@ -89,13 +106,13 @@ build.bat
 
 ## Usage
 
-### Just run it
+### Quick start
 
 ```
 zapret-core.exe
 ```
 
-Detects your ISP, loads the best strategy from the knowledge base, and runs until Ctrl+C. If the knowledge base is empty — prompts you to run `--find` first.
+Detects your ISP, loads the best strategy from the knowledge base, and runs until you press Ctrl+C. If the knowledge base is empty — tells you to run `--find` first.
 
 ---
 
@@ -105,7 +122,7 @@ Detects your ISP, loads the best strategy from the knowledge base, and runs unti
 zapret-core.exe --find
 ```
 
-Tests up to 137 combinations and stops at the first one that works:
+Tests up to 137 combinations and stops at the first one that passes the score threshold:
 
 ```
 [1/137] Testing: auto-1 [fake/ts/file]
@@ -117,9 +134,11 @@ Tests up to 137 combinations and stops at the first one that works:
 [+] Working strategy found: auto-4 [fake/badseq/file]
 ```
 
-The result is saved and used on subsequent runs.
+The result is saved to `data/knowledge.json` and used on every subsequent run.
 
-Best case — a few minutes. Worst case — up to 2 hours. In practice most users find something within the first 10–20 attempts.
+Typical time: a few minutes. Worst case: up to 2 hours if nothing works early. Most users find something within the first 10–20 attempts.
+
+> Run `--find` again any time if your ISP changes their blocking and the watchdog can't recover automatically.
 
 ---
 
@@ -129,7 +148,7 @@ Best case — a few minutes. Worst case — up to 2 hours. In practice most user
 zapret-core.exe --watch
 ```
 
-Checks YouTube and Discord every 60 seconds. Three failures in a row — automatically finds a new strategy and switches. Stop with Ctrl+C, everything shuts down cleanly.
+Runs in the background (no console window in release builds). Probes YouTube and Discord every 60 seconds. Three failures in a row triggers the optimizer — it finds a new strategy and switches without any interaction. Stop with Ctrl+C; winws is stopped cleanly.
 
 ---
 
@@ -139,7 +158,7 @@ Checks YouTube and Discord every 60 seconds. Three failures in a row — automat
 zapret-core.exe --status
 ```
 
-Shows whether winws is running and which strategy is in use. Exits immediately.
+Shows whether winws is running and what strategy is active. Exits immediately.
 
 ---
 
@@ -159,7 +178,7 @@ Stops winws. Exits immediately.
 zapret-core.exe --reset
 ```
 
-Clears all saved strategies for your current ASN from the knowledge base. Useful when nothing works and you want a clean search.
+Removes all saved strategies for your current ASN. Use this when you want to force a clean search — for example after switching ISP or VPN.
 
 ---
 
@@ -170,7 +189,7 @@ zapret-core.exe --export strategies.json
 zapret-core.exe --import strategies.json
 ```
 
-Share working strategies between machines or back them up.
+Export saves all strategies for your ASN to a JSON file. Import merges them into the knowledge base. Useful for sharing a working config between machines or restoring after a reinstall.
 
 ---
 
@@ -180,7 +199,7 @@ Share working strategies between machines or back them up.
 zapret-core.exe --updatelists
 ```
 
-Downloads updated lists from the Flowseal repository:
+Downloads the latest IP and domain lists from the Flowseal repository:
 
 ```
 [1/5] Updating ipset-all.txt...
@@ -191,7 +210,7 @@ Downloads updated lists from the Flowseal repository:
 Lists updated successfully.
 ```
 
-On download error, existing files are left unchanged.
+Uses atomic updates — each file is downloaded to a `.tmp` copy first, then renamed. If a download fails, existing files stay untouched.
 
 ---
 
@@ -201,19 +220,32 @@ On download error, existing files are left unchanged.
 zapret-core.exe --update
 ```
 
-Checks GitHub Releases for a newer version, downloads it, verifies SHA256, and restarts automatically.
+Checks GitHub Releases for a newer version. If found:
+1. Downloads `zapret-core-vX.Y.Z-windows-amd64.zip`
+2. Verifies SHA256 against `checksums.txt`
+3. Extracts `zapret-core.exe` from the zip
+4. Atomically replaces the current binary (rename `.old` → new)
+5. Exits with a message to restart
+
+The old binary is left as `zapret-core.exe.old` and cleaned up the next time the program starts.
 
 ---
 
-### HTTP API
+### HTTP API server
 
 ```
 zapret-core.exe --server
 ```
 
-Starts an HTTP server on `127.0.0.1:7432` for integration with external applications. Stop with Ctrl+C.
+Starts an HTTP server on `127.0.0.1:7432` for integration with a UI or external tools. Runs in daemon mode (no console window in release builds). Stop with Ctrl+C.
 
-**Note:** The `--server` and `--watch` modes run silently without a console window (daemon mode).
+---
+
+## Daemon mode
+
+`--server` and `--watch` are **daemon modes**. In release builds (compiled with `-H windowsgui`) the process has no console window at all — it runs silently in the background. This is intentional: these modes are meant to be managed by a UI wrapper or a startup task, not interacted with directly.
+
+In a locally-built binary (without `-H windowsgui`) the console window appears but is immediately hidden via `ShowWindow(SW_HIDE)` before any output is printed.
 
 ---
 
@@ -224,21 +256,23 @@ Starts an HTTP server on `127.0.0.1:7432` for integration with external applicat
 
 ### Conflict handling
 
-Any endpoint that starts a long-running operation (`/api/find`, `/api/update`, `/api/update-self`, `/api/start`, `/api/stop`) returns `409 Conflict` if another operation is already in progress:
+Any endpoint that triggers a long-running operation (`/api/find`, `/api/update`, `/api/update-self`, `/api/start`, `/api/stop`) returns `409 Conflict` if another operation is already running:
 
 ```json
 { "error": "operation in progress: find" }
 ```
 
-Wait for the current operation to finish or call `POST /api/stop` to abort it.
+Wait for it to finish or call `POST /api/stop` to abort.
 
 ---
 
 ### GET /api/version
 
 ```json
-{ "version": "v1.2.5" }
+{ "version": "v1.2.11" }
 ```
+
+---
 
 ### GET /api/status
 
@@ -253,36 +287,48 @@ Wait for the current operation to finish or call `POST /api/stop` to abort it.
 }
 ```
 
+---
+
 ### GET /api/provider
 
 ```json
 { "ASN": "AS12389", "Org": "Rostelecom", "Region": "Moscow Oblast" }
 ```
 
+---
+
 ### GET /api/knowledge
+
+Returns all strategies saved for the current ASN, ordered by score descending.
 
 ```json
 {
   "entries": [
-    { "asn": "AS12389", "score": 1.0, "hits": 5, "last_seen": "2026-05-17T..." }
+    { "asn": "AS12389", "vector": {...}, "score": 1.0, "hits": 5, "last_seen": "2026-05-17T..." }
   ],
   "total": 1
 }
 ```
 
+---
+
 ### POST /api/start
 
-Starts the best known strategy. Returns `404` if no strategies are known yet.
+Starts the best known strategy for the current ASN. Returns `404` if the knowledge base has no entries yet.
 
 ```json
 { "status": "started", "strategy": "auto-4 [fake/badseq/file]" }
 ```
+
+---
 
 ### POST /api/stop
 
 ```json
 { "status": "stopped" }
 ```
+
+---
 
 ### POST /api/watchdog
 
@@ -292,88 +338,103 @@ Starts watchdog in the background. Returns immediately.
 { "status": "started", "message": "watchdog running in background" }
 ```
 
+---
+
 ### DELETE /api/watchdog
+
+Stops watchdog and winws.
 
 ```json
 { "status": "stopped" }
 ```
 
+---
+
 ### POST /api/find — SSE
 
-Starts strategy search. Returns an SSE stream until a result is found or search is exhausted.
+Starts strategy search. Streams progress until a result is found or all combinations are exhausted.
 
 ```
-data: {"type":"progress","current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
+event: progress
+data: {"current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
 
-data: {"type":"success","strategy":{...},"score":1.0,"vector":{...}}
+event: success
+data: {"strategy":{...},"score":1.0,"vector":{...}}
 
-data: {"type":"error","error":"no working strategy found"}
+event: error
+data: {"error":"no working strategy found"}
 ```
 
-Returns `409 Conflict` if another operation is already running.
+---
 
 ### POST /api/update — SSE
 
-Updates IP/host lists from GitHub. Returns an SSE stream.
+Downloads updated lists from GitHub. Streams progress.
 
 ```
-data: {"type":"progress","current":1,"total":5,"filename":"ipset-all.txt"}
+event: progress
+data: {"current":1,"total":5,"filename":"ipset-all.txt"}
 
-data: {"type":"success","status":"updated","message":"lists updated successfully"}
+event: success
+data: {"status":"updated","message":"lists updated successfully"}
 
-data: {"type":"error","error":"download ipset-all.txt: ..."}
+event: error
+data: {"error":"download ipset-all.txt: HTTP 404"}
 ```
 
-Returns `409 Conflict` if another operation is already running.
+---
 
 ### POST /api/update-self — SSE
 
-Checks GitHub Releases for a newer version and applies it. Returns an SSE stream.
-
-Event types in order: `checking` → `found` → `downloading` → `verifying` → `applying` → `success` (or `up_to_date` / `error`).
+Checks for a newer release and applies it. Streams progress through these stages:
+`checking` → `found` → `downloading` → `verifying` → `applying` → `success` or `up_to_date` or `error`.
 
 ```
+event: progress
 data: {"type":"checking","message":"Checking for updates..."}
 
-data: {"type":"found","message":"New version available: v1.2.0 → v1.2.5"}
+event: progress
+data: {"type":"found","message":"New version available: v1.2.10 → v1.2.11"}
 
-data: {"type":"downloading","message":"Downloading zapret-core-v1.2.5-windows-amd64.zip..."}
+event: progress
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.11-windows-amd64.zip..."}
 
+event: progress
 data: {"type":"verifying","message":"Verifying SHA256..."}
 
+event: progress
 data: {"type":"applying","message":"Applying update..."}
 
-data: {"type":"success","status":"updated","message":"Updated successfully. Restarting..."}
+event: success
+data: {"status":"updated","message":"Update installed (v1.2.10 → v1.2.11). Please restart the server."}
 ```
 
-On `success` the process restarts automatically. On no update needed:
+After `success` the server process exits (`os.Exit(0)`). Restart it to run the new version.
+
+When already up to date:
 
 ```
-data: {"type":"up_to_date","status":"up_to_date","message":"Already up to date (v1.2.5)"}
+event: success
+data: {"status":"up_to_date","message":"Already up to date (v1.2.11)"}
 ```
 
-Returns `409 Conflict` if another operation is already running.
+---
 
 ### GET /api/events — SSE (persistent)
 
-Persistent SSE stream. Sends the current status immediately on connect, then pushes events whenever state changes.
+Long-lived SSE stream. Sends current state immediately on connect, then pushes an event on every state change (start, stop, watchdog toggle).
 
-**Initial event on connect:**
 ```
 data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
 ```
 
-**Subsequent events** (emitted on start/stop/watchdog state changes):
-```
-data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
-```
+Keep-alive comment every 15 seconds:
 
-Keep-alive comments are sent every 15 seconds to prevent proxy timeouts:
 ```
 : ping
 ```
 
-The connection stays open until the client disconnects. Multiple clients are supported simultaneously.
+Multiple concurrent clients are supported. The stream stays open until the client disconnects.
 
 </details>
 
@@ -381,7 +442,7 @@ The connection stays open until the client disconnects. Multiple clients are sup
 
 ## Configuration
 
-`data/config.json` is created automatically on first run. You can edit any parameter:
+`data/config.json` is created with defaults on first run. All fields are optional — missing ones fall back to defaults.
 
 ```json
 {
@@ -396,42 +457,68 @@ The connection stays open until the client disconnects. Multiple clients are sup
 
 | Parameter | Default | Description |
 |---|---|---|
-| `score_threshold` | `0.6` | Minimum score to accept a strategy (0–1) |
-| `fail_threshold` | `3` | Consecutive failures before watchdog triggers recovery |
-| `check_interval` | `60` | How often watchdog checks connectivity (seconds) |
-| `init_delay` | `5` | How long to wait after starting winws before testing (seconds) |
-| `test_timeout` | `8` | Timeout for a single HTTP probe (seconds) |
-| `test_runs` | `2` | How many times to repeat each test for reliability |
+| `score_threshold` | `0.6` | Minimum score (0–1) to accept a strategy. Lower = more permissive, higher = stricter. |
+| `fail_threshold` | `3` | How many consecutive probe failures before watchdog triggers recovery. |
+| `check_interval` | `60` | Watchdog probe interval in seconds. |
+| `init_delay` | `5` | Seconds to wait after winws starts before probing. Increase if you get false negatives on slow machines. |
+| `test_timeout` | `8` | Timeout per HTTP probe in seconds. Increase on slow or high-latency connections. |
+| `test_runs` | `2` | How many times to repeat each probe for stability. Higher = slower search but fewer false positives. |
 
 ---
 
 ## Knowledge Base
 
-`data/knowledge.json` is the program's memory — strategies that worked for each ISP by ASN. On the next run they're tested first, before any full search.
+`data/knowledge.json` stores the strategies that worked for each ISP, keyed by ASN. On startup the best-scored strategy for your ASN is loaded and tried first — a full search only runs if it fails or if no entry exists.
 
-Delete the file to start from scratch. Duplicates are updated, not appended, so the file doesn't grow indefinitely.
+- **Delete the file** to force a clean search from scratch.
+- **Export/import** to move strategies to another machine.
+- The file doesn't grow indefinitely — duplicate entries for the same ASN+vector are updated in place.
+
+---
+
+## File layout
+
+| Path | Description |
+|---|---|
+| `zapret-core.exe` | Main binary |
+| `assets/winws.exe` | DPI bypass engine (from zapret) |
+| `assets/WinDivert.dll` / `.sys` | Kernel packet capture driver |
+| `assets/fake/*.bin` | Fake packet payloads used by certain strategies |
+| `lists/*.txt` | Domain and IP range lists for bypass |
+| `data/config.json` | Runtime configuration (auto-created) |
+| `data/knowledge.json` | Strategy memory (auto-created) |
+| `data/zapret.log` | Log file (auto-created) |
 
 ---
 
 ## Conflict Detection
 
-Before searching, zapret-core checks for software known to interfere with WinDivert:
+Before searching, zapret-core checks for software that interferes with WinDivert at the kernel level:
 
 - GoodbyeDPI
 - AdGuardSvc
 - discordfix_zapret
-- winws1, winws2
+- winws1, winws2 (other instances)
 - Killer NIC / Intel Connectivity Network Service
 - Check Point (TracSrvWrapper, EPWD)
 - SmartByte
 
-If anything is found the search stops with a message. Disable the conflicting software and try again.
+If any are found, the search stops with a list of what was detected. Disable the conflicting software and retry.
 
 ---
 
 ## Logs
 
-Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `[ERROR]`.
+Logs are written simultaneously to the console and `data/zapret.log`.
+
+| Level | Meaning |
+|---|---|
+| `[INFO]` | Normal operation |
+| `[WARN]` | Non-fatal issue (probe failure, dropped event) |
+| `[ERROR]` | Operation failed |
+| `[OK]` | Success confirmation |
+
+The log file is not rotated — delete it manually if it grows too large.
 
 ---
 
@@ -440,15 +527,32 @@ Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `
 <details>
 <summary>Common issues</summary>
 
-**"No known strategies. Run --find"** — the knowledge base is empty or has no entries for your ISP. Run `--find`.
+**"No known strategies. Run --find"**  
+The knowledge base is empty or has no entry for your ISP. Run `--find`.
 
-**"No working strategy found"** — nothing passed the score threshold. Check your connection or increase `test_timeout` in config.json.
+**"No working strategy found"**  
+No combination passed the score threshold. Possible causes:
+- Your connection is too slow → increase `test_timeout`
+- Score threshold is too strict → lower `score_threshold` to `0.4`
+- ISP uses a blocking method not covered by the current strategy set
 
-**"Resolve conflicts and try again"** — conflicting software is running. Stop it and retry.
+**"Resolve conflicts and try again"**  
+A conflicting process is running. Check the list above, stop it, then retry.
 
-**"failed to start winws"** — `assets/winws.exe` not found or missing administrator rights.
+**"failed to start winws"**  
+Either `assets/winws.exe` is missing (incomplete extraction) or the process isn't running as Administrator.
 
-**409 in API** — another operation is in progress. Wait or stop it via `POST /api/stop`.
+**Watchdog triggers constantly**  
+The active strategy is borderline. Run `--find` again to get a more stable one, or increase `test_runs` in config for stricter selection.
+
+**409 Conflict in API**  
+Another operation is in progress. Wait for it to finish or send `POST /api/stop`.
+
+**After `--update` the version didn't change**  
+The binary was replaced but you're still running the old process. Restart the application. In `--server` mode, the server exits automatically after a successful update — just restart it.
+
+**Double-clicking the exe does nothing**  
+Release builds have no console window (`-H windowsgui`). The process runs in the background. Use a terminal (PowerShell / cmd) to see output, or use the `--server` mode and connect via the API.
 
 </details>
 
@@ -456,8 +560,8 @@ Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `
 
 ## Credits
 
-- [bol-van](https://github.com/bol-van/zapret) — for zapret itself, winws, WinDivert, and the fake packet binaries
-- [Flowseal](https://github.com/flowseal/zapret-discord-youtube) — for strategy presets and parameter research that shaped the search space here
+- [bol-van](https://github.com/bol-van/zapret) — zapret, winws, WinDivert, and the fake packet binaries
+- [Flowseal](https://github.com/flowseal/zapret-discord-youtube) — strategy presets and parameter research that shaped the search space
 
 ---
 
