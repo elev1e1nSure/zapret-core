@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	attachConsole()
 	cleanupUpdateArtifacts()
 
 	if err := initLogger(); err != nil {

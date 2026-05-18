@@ -9,6 +9,26 @@ import (
 	"syscall"
 )
 
+// attachConsole attaches to the parent process console so that a windowsgui
+// binary can still write output when launched from PowerShell or cmd.
+// Must be called before any log output in interactive (non-daemon) modes.
+func attachConsole() {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	attachConsoleProc := kernel32.NewProc("AttachConsole")
+	// ATTACH_PARENT_PROCESS = 0xFFFFFFFF (-1 as uint32)
+	ret, _, _ := attachConsoleProc.Call(0xFFFFFFFF)
+	if ret == 0 {
+		return // no parent console (e.g. double-clicked), nothing to attach
+	}
+	// Go's os.Stdout/Stderr were opened before AttachConsole, so reopen them.
+	conout, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0)
+	if err != nil {
+		return
+	}
+	os.Stdout = conout
+	os.Stderr = conout
+}
+
 // hideConsoleWindow hides the console window using WinAPI.
 // Called before any log output in daemon modes (--server, --watch) to prevent window flash.
 func hideConsoleWindow() {
