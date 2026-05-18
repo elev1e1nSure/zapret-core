@@ -145,9 +145,6 @@ jobs:
           $notes += "**Note:** Run as administrator. WinDivert requires kernel driver access."
           
           $notes | Out-File -FilePath "release_notes.md" -Encoding UTF8
-          "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
-          $notes >> $env:GITHUB_OUTPUT
-          "EOF" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
       - name: Create Release
@@ -156,6 +153,6 @@ jobs:
           files: zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
           draft: false
           prerelease: false
-          body: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
+          body_path: release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
