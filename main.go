@@ -408,6 +408,11 @@ func runSelfUpdate() {
 	}
 	req.Header.Set("User-Agent", "zapret-core-updater")
 
+	// Add GitHub token if available
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		logError("Failed to fetch release info: %v", err)
