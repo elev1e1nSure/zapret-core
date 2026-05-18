@@ -241,7 +241,8 @@ func extractExe(zipPath, destPath string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		if f.Name == "zapret-core.exe" {
+		// Look for zapret-core.exe at root or in any subfolder
+		if filepath.Base(f.Name) == "zapret-core.exe" && !f.FileInfo().IsDir() {
 			rc, err := f.Open()
 			if err != nil {
 				return err
