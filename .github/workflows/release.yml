@@ -41,7 +41,9 @@ jobs:
       
       - name: Get version
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $env:GITHUB_OUTPUT
+        run: |
+          $version = "${GITHUB_REF}" -replace "refs/tags/", ""
+          Write-Output "VERSION=$version" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
       - name: Create zip
