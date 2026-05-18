@@ -153,10 +153,31 @@ zapret-core.exe --stop
 
 ---
 
+### Сбросить стратегии
+
+```
+zapret-core.exe --reset
+```
+
+Удаляет все сохранённые стратегии для текущего ASN из базы знаний. Полезно, когда ничего не работает и нужно начать поиск заново.
+
+---
+
+### Экспорт / Импорт стратегий
+
+```
+zapret-core.exe --export strategies.json
+zapret-core.exe --import strategies.json
+```
+
+Позволяет перенести рабочие стратегии между машинами или сделать резервную копию.
+
+---
+
 ### Обновить списки
 
 ```
-zapret-core.exe --update
+zapret-core.exe --updatelists
 ```
 
 Скачивает актуальные списки из репозитория Flowseal:
@@ -174,6 +195,16 @@ zapret-core.exe --update
 
 ---
 
+### Обновить программу
+
+```
+zapret-core.exe --update
+```
+
+Проверяет GitHub Releases на наличие новой версии, скачивает, проверяет SHA256 и автоматически перезапускается.
+
+---
+
 ### HTTP API
 
 ```
@@ -188,6 +219,24 @@ zapret-core.exe --server
 
 <details>
 <summary>Все эндпоинты доступны только локально (127.0.0.1:7432)</summary>
+
+### Обработка конфликтов
+
+Если уже выполняется длительная операция (`/api/find`, `/api/update`, `/api/update-self`, `/api/start`, `/api/stop`) — любой новый запрос вернёт `409 Conflict`:
+
+```json
+{ "error": "operation in progress: find" }
+```
+
+Дождись завершения текущей операции или останови её через `POST /api/stop`.
+
+---
+
+### GET /api/version
+
+```json
+{ "version": "v1.2.1" }
+```
 
 ### GET /api/status
 
@@ -233,34 +282,6 @@ zapret-core.exe --server
 { "status": "stopped" }
 ```
 
-### POST /api/find
-
-Запускает поиск, отдаёт SSE-поток:
-
-```
-event: progress
-data: {"current": 3, "total": 137, "strategy": "auto-3 [fake/ts/file]", "score": 0.33}
-
-event: success
-data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
-```
-
-Если уже что-то выполняется — `409 Conflict`.
-
-### POST /api/update
-
-Обновляет списки, тоже SSE:
-
-```
-event: progress
-data: {"current": 1, "total": 5, "filename": "ipset-all.txt"}
-
-event: success
-data: {"status": "updated", "message": "lists updated successfully"}
-```
-
-`409 Conflict` если занято.
-
 ### POST /api/watchdog
 
 Запускает watchdog в фоне, отвечает сразу:
@@ -274,6 +295,83 @@ data: {"status": "updated", "message": "lists updated successfully"}
 ```json
 { "status": "stopped" }
 ```
+
+### POST /api/find — SSE
+
+Запускает поиск стратегий. Отдаёт SSE-поток до получения результата или исчерпания вариантов.
+
+```
+data: {"type":"progress","current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
+
+data: {"type":"success","strategy":{...},"score":1.0,"vector":{...}}
+
+data: {"type":"error","error":"no working strategy found"}
+```
+
+`409 Conflict` если занято.
+
+### POST /api/update — SSE
+
+Обновляет IP/host-списки с GitHub. Отдаёт SSE-поток.
+
+```
+data: {"type":"progress","current":1,"total":5,"filename":"ipset-all.txt"}
+
+data: {"type":"success","status":"updated","message":"lists updated successfully"}
+
+data: {"type":"error","error":"download ipset-all.txt: ..."}
+```
+
+`409 Conflict` если занято.
+
+### POST /api/update-self — SSE
+
+Проверяет GitHub Releases на наличие новой версии и применяет обновление. Отдаёт SSE-поток.
+
+Порядок событий: `checking` → `found` → `downloading` → `verifying` → `applying` → `success` (или `up_to_date` / `error`).
+
+```
+data: {"type":"checking","message":"Checking for updates..."}
+
+data: {"type":"found","message":"New version available: v1.2.0 → v1.2.1"}
+
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.1-windows-amd64.zip..."}
+
+data: {"type":"verifying","message":"Verifying SHA256..."}
+
+data: {"type":"applying","message":"Applying update..."}
+
+data: {"type":"success","status":"updated","message":"Updated successfully. Restarting..."}
+```
+
+После `success` процесс перезапускается автоматически. Если обновлений нет:
+
+```
+data: {"type":"up_to_date","status":"up_to_date","message":"Already up to date (v1.2.1)"}
+```
+
+`409 Conflict` если занято.
+
+### GET /api/events — SSE (постоянное соединение)
+
+Постоянный SSE-поток. При подключении сразу отправляет текущий статус, затем пушит события при каждом изменении состояния.
+
+**Начальное событие при подключении:**
+```
+data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
+```
+
+**Последующие события** (при старте/остановке/изменении watchdog):
+```
+data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
+```
+
+Каждые 15 секунд отправляется keep-alive комментарий:
+```
+: ping
+```
+
+Соединение остаётся открытым до отключения клиента. Поддерживается несколько клиентов одновременно.
 
 </details>
 
@@ -321,7 +419,7 @@ data: {"status": "updated", "message": "lists updated successfully"}
 - AdGuardSvc
 - discordfix_zapret
 - winws1, winws2
-- Killer NIC / Intel Connectivity Network Serviceя  
+- Killer NIC / Intel Connectivity Network Service
 - Check Point (TracSrvWrapper, EPWD)
 - SmartByte
 

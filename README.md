@@ -153,10 +153,31 @@ Stops winws. Exits immediately.
 
 ---
 
+### Reset strategies
+
+```
+zapret-core.exe --reset
+```
+
+Clears all saved strategies for your current ASN from the knowledge base. Useful when nothing works and you want a clean search.
+
+---
+
+### Export / Import strategies
+
+```
+zapret-core.exe --export strategies.json
+zapret-core.exe --import strategies.json
+```
+
+Share working strategies between machines or back them up.
+
+---
+
 ### Update lists
 
 ```
-zapret-core.exe --update
+zapret-core.exe --updatelists
 ```
 
 Downloads updated lists from the Flowseal repository:
@@ -174,6 +195,16 @@ On download error, existing files are left unchanged.
 
 ---
 
+### Self-update
+
+```
+zapret-core.exe --update
+```
+
+Checks GitHub Releases for a newer version, downloads it, verifies SHA256, and restarts automatically.
+
+---
+
 ### HTTP API
 
 ```
@@ -188,6 +219,24 @@ Starts an HTTP server on `127.0.0.1:7432` for integration with external applicat
 
 <details>
 <summary>All endpoints are local-only (127.0.0.1:7432)</summary>
+
+### Conflict handling
+
+Any endpoint that starts a long-running operation (`/api/find`, `/api/update`, `/api/update-self`, `/api/start`, `/api/stop`) returns `409 Conflict` if another operation is already in progress:
+
+```json
+{ "error": "operation in progress: find" }
+```
+
+Wait for the current operation to finish or call `POST /api/stop` to abort it.
+
+---
+
+### GET /api/version
+
+```json
+{ "version": "v1.2.1" }
+```
 
 ### GET /api/status
 
@@ -233,34 +282,6 @@ Starts the best known strategy. Returns `404` if no strategies are known yet.
 { "status": "stopped" }
 ```
 
-### POST /api/find
-
-Starts strategy search. Returns an SSE stream.
-
-```
-event: progress
-data: {"current": 3, "total": 137, "strategy": "auto-3 [fake/ts/file]", "score": 0.33}
-
-event: success
-data: {"strategy": "auto-4 [fake/badseq/file]", "score": 1.0, "vector": {...}}
-```
-
-Returns `409 Conflict` if another operation is already running.
-
-### POST /api/update
-
-Updates lists from GitHub. Returns an SSE stream.
-
-```
-event: progress
-data: {"current": 1, "total": 5, "filename": "ipset-all.txt"}
-
-event: success
-data: {"status": "updated", "message": "lists updated successfully"}
-```
-
-Returns `409 Conflict` if another operation is already running.
-
 ### POST /api/watchdog
 
 Starts watchdog in the background. Returns immediately.
@@ -274,6 +295,83 @@ Starts watchdog in the background. Returns immediately.
 ```json
 { "status": "stopped" }
 ```
+
+### POST /api/find — SSE
+
+Starts strategy search. Returns an SSE stream until a result is found or search is exhausted.
+
+```
+data: {"type":"progress","current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
+
+data: {"type":"success","strategy":{...},"score":1.0,"vector":{...}}
+
+data: {"type":"error","error":"no working strategy found"}
+```
+
+Returns `409 Conflict` if another operation is already running.
+
+### POST /api/update — SSE
+
+Updates IP/host lists from GitHub. Returns an SSE stream.
+
+```
+data: {"type":"progress","current":1,"total":5,"filename":"ipset-all.txt"}
+
+data: {"type":"success","status":"updated","message":"lists updated successfully"}
+
+data: {"type":"error","error":"download ipset-all.txt: ..."}
+```
+
+Returns `409 Conflict` if another operation is already running.
+
+### POST /api/update-self — SSE
+
+Checks GitHub Releases for a newer version and applies it. Returns an SSE stream.
+
+Event types in order: `checking` → `found` → `downloading` → `verifying` → `applying` → `success` (or `up_to_date` / `error`).
+
+```
+data: {"type":"checking","message":"Checking for updates..."}
+
+data: {"type":"found","message":"New version available: v1.2.0 → v1.2.1"}
+
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.1-windows-amd64.zip..."}
+
+data: {"type":"verifying","message":"Verifying SHA256..."}
+
+data: {"type":"applying","message":"Applying update..."}
+
+data: {"type":"success","status":"updated","message":"Updated successfully. Restarting..."}
+```
+
+On `success` the process restarts automatically. On no update needed:
+
+```
+data: {"type":"up_to_date","status":"up_to_date","message":"Already up to date (v1.2.1)"}
+```
+
+Returns `409 Conflict` if another operation is already running.
+
+### GET /api/events — SSE (persistent)
+
+Persistent SSE stream. Sends the current status immediately on connect, then pushes events whenever state changes.
+
+**Initial event on connect:**
+```
+data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
+```
+
+**Subsequent events** (emitted on start/stop/watchdog state changes):
+```
+data: {"type":"status","data":{"running":true,"watchdog":false,"strategy":"auto-4 [fake/badseq/file]"}}
+```
+
+Keep-alive comments are sent every 15 seconds to prevent proxy timeouts:
+```
+: ping
+```
+
+The connection stays open until the client disconnects. Multiple clients are supported simultaneously.
 
 </details>
 
