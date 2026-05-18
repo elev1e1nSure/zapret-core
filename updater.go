@@ -27,7 +27,7 @@ var listFiles = []string{
 	"list-google.txt",
 }
 
-// UpdateProgressCallback is called during update to report progress
+// UpdateProgressCallback is called during list update to report progress
 type UpdateProgressCallback func(current, total int, filename string)
 
 // UpdateLists downloads and updates all list files from GitHub
@@ -63,7 +63,7 @@ func UpdateLists(progressCb UpdateProgressCallback) error {
 	return nil
 }
 
-// downloadFile downloads from url to destPath with timeout
+// downloadFile downloads from url to destPath with 30-second timeout
 func downloadFile(url, destPath string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 
@@ -153,7 +153,7 @@ func checkForUpdate() (string, error) {
 		return "", nil // up to date
 	}
 
-	// Compare versions numerically
+	// Compare versions numerically (major.minor.patch)
 	localParts := strings.Split(localVersion, ".")
 	remoteParts := strings.Split(remoteVersion, ".")
 

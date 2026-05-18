@@ -8,13 +8,14 @@ import (
 	"time"
 )
 
-// ProviderInfo holds ISP identification data
+// ProviderInfo holds ISP identification data for ASN-based strategy selection
 type ProviderInfo struct {
 	ASN    string // e.g. "AS12389"
 	Org    string // e.g. "Rostelecom"
 	Region string // e.g. "77" (Moscow)
 }
 
+// ipinfoResponse represents the JSON response from ipinfo.io API
 type ipinfoResponse struct {
 	Org    string `json:"org"`    // "AS12389 Rostelecom"
 	Region string `json:"region"` // "Moscow Oblast"

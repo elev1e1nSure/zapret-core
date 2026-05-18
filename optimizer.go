@@ -5,7 +5,7 @@ import (
 	"math/rand"
 )
 
-// arm represents a single strategy candidate with UCB1 stats
+// arm represents a single strategy candidate with UCB1 statistics
 type arm struct {
 	vector     StrategyVector
 	totalScore float64
@@ -23,13 +23,13 @@ func (a *arm) ucb1Score(totalPulls int) float64 {
 	return avgScore + exploration
 }
 
-// Optimizer runs UCB1 over the strategy search space
+// Optimizer runs UCB1 algorithm over the strategy search space to find working DPI bypass strategies
 type Optimizer struct {
-	asn           string
-	kb            *Knowledge
-	arms          []*arm
-	totalPulls    int
-	progressChan  chan FindProgress
+	asn          string
+	kb           *Knowledge
+	arms         []*arm
+	totalPulls   int
+	progressChan chan FindProgress
 }
 
 // NewOptimizer builds the arm pool from SearchSpace + known good strategies for ASN

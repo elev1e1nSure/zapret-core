@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// StrategyVector holds all variable parameters across all known strategies
+// StrategyVector holds all variable parameters for DPI bypass strategies
 type StrategyVector struct {
 	// TCP desync method
 	DesyncMethod string // fake | fake,fakedsplit | fake,multisplit | fake,hostfakesplit | fake,multidisorder | syndata,multidisorder | syndata | hostfakesplit
@@ -62,13 +62,13 @@ var SearchSpace = struct {
 	QuicBin         []string
 	IPID            []string
 }{
-	DesyncMethod:    []string{"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit", "fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit"},
-	RepeatsTCP:      []int{4, 6, 8, 10, 11, 12, 14},
-	RepeatsUDP:      []int{4, 6, 10, 11, 12},
-	Fooling:         []string{"ts", "badseq", "ts,md5sig"},
-	SplitPos:        []string{"1", "2", "2,sniext+1", "1,midsld"},
-	TLSMode:         []string{"file", "tls-mod", "none"},
-	TLSFiles:        [][]string{
+	DesyncMethod: []string{"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit", "fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit"},
+	RepeatsTCP:   []int{4, 6, 8, 10, 11, 12, 14},
+	RepeatsUDP:   []int{4, 6, 10, 11, 12},
+	Fooling:      []string{"ts", "badseq", "ts,md5sig"},
+	SplitPos:     []string{"1", "2", "2,sniext+1", "1,midsld"},
+	TLSMode:      []string{"file", "tls-mod", "none"},
+	TLSFiles: [][]string{
 		{"tls_clienthello_www_google_com.bin"},
 		{"stun.bin", "tls_clienthello_www_google_com.bin"},
 		{"stun.bin", "tls_clienthello_max_ru.bin"},
@@ -81,11 +81,11 @@ var SearchSpace = struct {
 	HostFakeMod:     []string{"www.google.com", "ya.ru", "ozon.ru"},
 	Cutoff:          []string{"n2", "n3", "n4", "n5"},
 	BadseqIncrement: []int{2, 1000, 10000000},
-	QuicBin:         []string{"quic_initial_www_google_com.bin"},
-	IPID:            []string{"zero"},
+	QuicBin:         []string{"quic_initial_www_google_com.bin", "quic_initial_dbankcloud_ru.bin", "quic_initial_yandex_ru.bin"},
+	IPID:            []string{"zero", ""},
 }
 
-// buildTLSArgs returns --dpi-desync-fake-tls= args based on TLS mode
+// buildTLSArgs constructs TLS-related winws arguments from a strategy vector
 func buildTLSArgs(v StrategyVector) []string {
 	args := []string{}
 	switch v.TLSMode {
@@ -138,9 +138,7 @@ func buildTCPRule(v StrategyVector) []string {
 	return args
 }
 
-// Generate builds the full winws argument list from a StrategyVector
-// Fixed: port filters, hostlists, ipsets
-// Variable: everything inside buildTCPRule and buildTLSArgs
+// Generate converts a strategy vector into winws command-line arguments
 func Generate(v StrategyVector) []string {
 	args := []string{}
 
@@ -265,7 +263,7 @@ func Generate(v StrategyVector) []string {
 	return args
 }
 
-// VectorToStrategy wraps a StrategyVector into a Strategy with a human-readable name
+// VectorToStrategy converts a vector to a named Strategy for display
 func VectorToStrategy(v StrategyVector, id int) *Strategy {
 	return &Strategy{
 		Name: fmt.Sprintf("auto-%d [%s/%s/%s]", id, v.DesyncMethod, v.Fooling, v.TLSMode),

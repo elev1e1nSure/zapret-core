@@ -84,7 +84,7 @@ Compare the output against `checksums.txt`. Matching means the file is authentic
 <details>
 <summary>Instructions</summary>
 
-Requires Go 1.21+ and Windows.
+Requires Go 1.26.3 and Windows.
 
 ```bash
 git clone https://github.com/elev1e1nSure/zapret-core.git

@@ -1,7 +1,6 @@
 # Runtime data
 data/
 *.log
-data/knowledge.json
 
 # Compiled binaries
 *.exe

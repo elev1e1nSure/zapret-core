@@ -84,7 +84,7 @@ Get-FileHash zapret-core-v1.2.11-windows-amd64.zip -Algorithm SHA256
 <details>
 <summary>Инструкции</summary>
 
-Нужен Go 1.21+ и Windows.
+Нужен Go 1.26.3 и Windows.
 
 ```bash
 git clone https://github.com/elev1e1nSure/zapret-core.git
