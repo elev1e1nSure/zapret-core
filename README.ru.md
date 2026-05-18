@@ -269,7 +269,7 @@ zapret-core.exe --server
 ### GET /api/version
 
 ```json
-{ "version": "v1.2.11" }
+{ "version": "v1.2.14" }
 ```
 
 ---
@@ -293,6 +293,16 @@ zapret-core.exe --server
 
 ```json
 { "ASN": "AS12389", "Org": "Rostelecom", "Region": "Moscow Oblast" }
+```
+
+---
+
+### GET /api/health
+
+Всегда возвращает `200`. Используй чтобы проверить что сервер поднялся после запуска.
+
+```json
+{ "ok": true, "version": "v1.2.14" }
 ```
 
 ---
@@ -350,19 +360,30 @@ zapret-core.exe --server
 
 ---
 
+### Формат SSE-событий
+
+Все SSE-эндпоинты используют единую обёртку:
+
+```json
+{ "type": "...", "message": "...", "data": { ... } }
+```
+
+- `type` — тип события (`progress`, `success`, `error`, `up_to_date`, `shutdown`, `log`, `status`)
+- `message` — читаемое описание
+- `data` — опциональный структурированный payload (отсутствует если null)
+
+---
+
 ### POST /api/find — SSE
 
-Запускает поиск стратегий. Стримит прогресс до получения результата или исчерпания вариантов.
+Запускает поиск стратегий. Стримит прогресс до результата или исчерпания вариантов.
 
 ```
-event: progress
-data: {"current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
+data: {"type":"progress","message":"[3/137] Testing: auto-3 [fake/ts/file]","data":{"current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}}
 
-event: success
-data: {"strategy":{...},"score":1.0,"vector":{...}}
+data: {"type":"success","message":"Strategy found","data":{"strategy":{...},"score":1.0,"vector":{...}}}
 
-event: error
-data: {"error":"no working strategy found"}
+data: {"type":"error","message":"no working strategy found"}
 ```
 
 ---
@@ -372,50 +393,35 @@ data: {"error":"no working strategy found"}
 Скачивает обновлённые списки с GitHub. Стримит прогресс.
 
 ```
-event: progress
-data: {"current":1,"total":5,"filename":"ipset-all.txt"}
+data: {"type":"progress","message":"[1/5] Updating ipset-all.txt...","data":{"current":1,"total":5,"filename":"ipset-all.txt"}}
 
-event: success
-data: {"status":"updated","message":"lists updated successfully"}
+data: {"type":"success","message":"lists updated successfully"}
 
-event: error
-data: {"error":"download ipset-all.txt: HTTP 404"}
+data: {"type":"error","message":"download ipset-all.txt: HTTP 404"}
 ```
 
 ---
 
 ### POST /api/update-self — SSE
 
-Проверяет наличие нового релиза и применяет обновление. Стримит прогресс через этапы:
-`checking` → `found` → `downloading` → `verifying` → `applying` → `success` или `up_to_date` или `error`.
+Проверяет наличие нового релиза и применяет обновление. Этапы: `checking` → `found` → `downloading` → `verifying` → `applying` → `success` или `up_to_date` или `error`.
 
 ```
-event: progress
 data: {"type":"checking","message":"Checking for updates..."}
-
-event: progress
-data: {"type":"found","message":"New version available: v1.2.10 → v1.2.11"}
-
-event: progress
-data: {"type":"downloading","message":"Downloading zapret-core-v1.2.11-windows-amd64.zip..."}
-
-event: progress
+data: {"type":"found","message":"New version available: v1.2.13 → v1.2.14"}
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.14-windows-amd64.zip..."}
 data: {"type":"verifying","message":"Verifying SHA256..."}
-
-event: progress
 data: {"type":"applying","message":"Applying update..."}
-
-event: success
-data: {"status":"updated","message":"Update installed (v1.2.10 → v1.2.11). Please restart the server."}
+data: {"type":"success","message":"Update installed (v1.2.13 → v1.2.14). Please restart the server."}
+data: {"type":"shutdown","message":"Server is shutting down for update. Restart to apply."}
 ```
 
-После `success` серверный процесс завершается (`os.Exit(0)`). Перезапусти его — запустится уже новая версия.
+После `shutdown` процесс вызывает `os.Exit(0)`. Клиент должен поймать закрытие соединения, перезапустить процесс и поллить `GET /api/health` до `200`.
 
 Если обновлений нет:
 
 ```
-event: success
-data: {"status":"up_to_date","message":"Already up to date (v1.2.11)"}
+data: {"type":"up_to_date","message":"Already up to date (v1.2.14)"}
 ```
 
 ---
@@ -435,6 +441,21 @@ Keep-alive каждые 15 секунд:
 ```
 
 Поддерживается несколько клиентов одновременно. Соединение остаётся открытым до отключения клиента.
+
+---
+
+### GET /api/logs — SSE
+
+Стримит лог-файл. При подключении отдаёт последние N строк как бэклог, затем продолжает стримить новые строки по мере записи.
+
+Query-параметр: `?lines=N` (по умолчанию `100`). Используй `?lines=0` для только live-режима без бэклога.
+
+```
+data: {"type":"log","message":"[INFO] ℹ winws started with strategy auto-4 [fake/badseq/file]"}
+data: {"type":"log","message":"[OK] ✓ YouTube: OK  Discord: OK  Google: OK"}
+```
+
+Новые строки появляются в течение ~250мс после записи. Соединение остаётся открытым до отключения клиента.
 
 </details>
 

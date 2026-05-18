@@ -269,7 +269,7 @@ Wait for it to finish or call `POST /api/stop` to abort.
 ### GET /api/version
 
 ```json
-{ "version": "v1.2.11" }
+{ "version": "v1.2.14" }
 ```
 
 ---
@@ -293,6 +293,16 @@ Wait for it to finish or call `POST /api/stop` to abort.
 
 ```json
 { "ASN": "AS12389", "Org": "Rostelecom", "Region": "Moscow Oblast" }
+```
+
+---
+
+### GET /api/health
+
+Always returns `200`. Use this to check if the server is up after launching.
+
+```json
+{ "ok": true, "version": "v1.2.14" }
 ```
 
 ---
@@ -350,19 +360,30 @@ Stops watchdog and winws.
 
 ---
 
+### SSE event format
+
+All SSE endpoints use a unified envelope:
+
+```json
+{ "type": "...", "message": "...", "data": { ... } }
+```
+
+- `type` — event kind (`progress`, `success`, `error`, `up_to_date`, `shutdown`, `log`, `status`)
+- `message` — human-readable description
+- `data` — optional structured payload (omitted when null)
+
+---
+
 ### POST /api/find — SSE
 
 Starts strategy search. Streams progress until a result is found or all combinations are exhausted.
 
 ```
-event: progress
-data: {"current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}
+data: {"type":"progress","message":"[3/137] Testing: auto-3 [fake/ts/file]","data":{"current":3,"total":137,"strategy":"auto-3 [fake/ts/file]","score":0.33}}
 
-event: success
-data: {"strategy":{...},"score":1.0,"vector":{...}}
+data: {"type":"success","message":"Strategy found","data":{"strategy":{...},"score":1.0,"vector":{...}}}
 
-event: error
-data: {"error":"no working strategy found"}
+data: {"type":"error","message":"no working strategy found"}
 ```
 
 ---
@@ -372,50 +393,35 @@ data: {"error":"no working strategy found"}
 Downloads updated lists from GitHub. Streams progress.
 
 ```
-event: progress
-data: {"current":1,"total":5,"filename":"ipset-all.txt"}
+data: {"type":"progress","message":"[1/5] Updating ipset-all.txt...","data":{"current":1,"total":5,"filename":"ipset-all.txt"}}
 
-event: success
-data: {"status":"updated","message":"lists updated successfully"}
+data: {"type":"success","message":"lists updated successfully"}
 
-event: error
-data: {"error":"download ipset-all.txt: HTTP 404"}
+data: {"type":"error","message":"download ipset-all.txt: HTTP 404"}
 ```
 
 ---
 
 ### POST /api/update-self — SSE
 
-Checks for a newer release and applies it. Streams progress through these stages:
-`checking` → `found` → `downloading` → `verifying` → `applying` → `success` or `up_to_date` or `error`.
+Checks for a newer release and applies it. Stages: `checking` → `found` → `downloading` → `verifying` → `applying` → `success` or `up_to_date` or `error`.
 
 ```
-event: progress
 data: {"type":"checking","message":"Checking for updates..."}
-
-event: progress
-data: {"type":"found","message":"New version available: v1.2.10 → v1.2.11"}
-
-event: progress
-data: {"type":"downloading","message":"Downloading zapret-core-v1.2.11-windows-amd64.zip..."}
-
-event: progress
+data: {"type":"found","message":"New version available: v1.2.13 → v1.2.14"}
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.14-windows-amd64.zip..."}
 data: {"type":"verifying","message":"Verifying SHA256..."}
-
-event: progress
 data: {"type":"applying","message":"Applying update..."}
-
-event: success
-data: {"status":"updated","message":"Update installed (v1.2.10 → v1.2.11). Please restart the server."}
+data: {"type":"success","message":"Update installed (v1.2.13 → v1.2.14). Please restart the server."}
+data: {"type":"shutdown","message":"Server is shutting down for update. Restart to apply."}
 ```
 
-After `success` the server process exits (`os.Exit(0)`). Restart it to run the new version.
+After `shutdown` the server process calls `os.Exit(0)`. The client should detect the closed connection and restart the process, then poll `GET /api/health` until `200`.
 
 When already up to date:
 
 ```
-event: success
-data: {"status":"up_to_date","message":"Already up to date (v1.2.11)"}
+data: {"type":"up_to_date","message":"Already up to date (v1.2.14)"}
 ```
 
 ---
@@ -435,6 +441,21 @@ Keep-alive comment every 15 seconds:
 ```
 
 Multiple concurrent clients are supported. The stream stays open until the client disconnects.
+
+---
+
+### GET /api/logs — SSE
+
+Streams log output. On connect, sends the last N lines as a backlog, then tails new lines as they are written.
+
+Query param: `?lines=N` (default `100`). Use `?lines=0` for live-only (no backlog).
+
+```
+data: {"type":"log","message":"[INFO] ℹ winws started with strategy auto-4 [fake/badseq/file]"}
+data: {"type":"log","message":"[OK] ✓ YouTube: OK  Discord: OK  Google: OK"}
+```
+
+New lines arrive within ~250ms of being written. The stream stays open until the client disconnects.
 
 </details>
 
