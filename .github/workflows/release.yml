@@ -170,10 +170,19 @@ jobs:
           $notes | Out-File -FilePath "release_notes.md" -Encoding UTF8
         shell: pwsh
       
+      - name: Generate checksum
+        run: |
+          $zip = "zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Out-File -FilePath "checksums.txt" -Encoding UTF8
+        shell: pwsh
+      
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
+          files: |
+            zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
+            checksums.txt
           draft: false
           prerelease: false
           body_path: release_notes.md

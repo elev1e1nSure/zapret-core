@@ -8,7 +8,7 @@
 ![Release](https://img.shields.io/github/v/release/elev1e1nSure/zapret-core)
 ![Downloads](https://img.shields.io/github/downloads/elev1e1nSure/zapret-core/total)
 
-Тулза для обхода DPI на Windows — для YouTube и Discord. Сама перебирает стратегии, находит рабочую под ваш провайдер и запоминает. Если провайдер обновит блокировку — сама же найдёт новую.
+Инструмент для обхода DPI на Windows — для YouTube и Discord. Сама перебирает стратегии, находит рабочую под ваш провайдер и запоминает. Если провайдер обновит блокировку — сама же найдёт новую.
 
 Сделано на базе [zapret](https://github.com/bol-van/zapret) (bol-van) и [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) (Flowseal).
 
