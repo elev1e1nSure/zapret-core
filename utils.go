@@ -33,6 +33,16 @@ func exeDir() string {
 	return filepath.Dir(exe)
 }
 
+// exePath returns the full path of the running executable.
+// Falls back to "zapret-core.exe" on error.
+func exePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "zapret-core.exe"
+	}
+	return exe
+}
+
 // assetsDir returns absolute path to assets/
 func assetsDir() string {
 	return filepath.Join(exeDir(), "assets")

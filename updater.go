@@ -108,28 +108,10 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-// getExeDir returns the directory of the current executable
-func getExeDir() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "."
-	}
-	return filepath.Dir(exe)
-}
-
-// getExePath returns the full path of the current executable
-func getExePath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "zapret-core.exe"
-	}
-	return exe
-}
-
-// cleanupOldExe silently deletes zapret-core.exe.old if it exists
-func cleanupOldExe() {
-	oldExe := filepath.Join(getExeDir(), "zapret-core.exe.old")
-	_ = os.Remove(oldExe)
+// cleanupUpdateArtifacts silently deletes leftover .old and .new files from previous updates
+func cleanupUpdateArtifacts() {
+	_ = os.Remove(exePath() + ".old")
+	_ = os.Remove(exePath() + ".new")
 }
 
 // checkForUpdate checks GitHub API for latest release and returns the tag name if newer
@@ -193,7 +175,7 @@ func checkForUpdate() (string, error) {
 
 // downloadRelease downloads zip and checksums.txt to exeDir
 func downloadRelease(zipURL, checksumURL string) (string, string, string, error) {
-	exeDir := getExeDir()
+	exeDir := exeDir()
 	zipFilename := filepath.Base(zipURL)
 	zipPath := filepath.Join(exeDir, zipFilename)
 	checksumPath := filepath.Join(exeDir, "checksums.txt")
@@ -288,24 +270,125 @@ func extractExe(zipPath, destPath string) error {
 	return fmt.Errorf("zapret-core.exe not found in zip")
 }
 
-// applyUpdate performs atomic file swap and restarts the process
+// SelfUpdateProgressCallback receives stage and human-readable message during performSelfUpdate
+type SelfUpdateProgressCallback func(stage, message string)
+
+// performSelfUpdate runs the full self-update pipeline:
+// check → fetch release info → find assets → download → verify SHA256 → extract → atomic swap.
+// progressCb is called at each stage; pass nil to suppress progress reporting.
+// Returns ("", nil) when already up to date.
+// Returns (newVersion, nil) on successful swap; caller must exit/restart.
+func performSelfUpdate(progressCb SelfUpdateProgressCallback) (string, error) {
+	progress := func(stage, msg string) {
+		if progressCb != nil {
+			progressCb(stage, msg)
+		}
+	}
+
+	progress("checking", "Checking for updates...")
+	remoteVersion, err := checkForUpdate()
+	if err != nil {
+		return "", fmt.Errorf("check for update: %w", err)
+	}
+	if remoteVersion == "" {
+		return "", nil
+	}
+
+	progress("found", fmt.Sprintf("New version available: %s → %s", Version, remoteVersion))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	url := "https://api.github.com/repos/elev1e1nSure/zapret-core/releases/latest"
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "zapret-core-updater")
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch release info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("fetch release info: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var release GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("parse release info: %w", err)
+	}
+
+	var zipURL, checksumURL string
+	for _, asset := range release.Assets {
+		if strings.Contains(asset.Name, "windows-amd64.zip") {
+			zipURL = asset.BrowserDownloadURL
+		} else if asset.Name == "checksums.txt" {
+			checksumURL = asset.BrowserDownloadURL
+		}
+	}
+
+	if zipURL == "" {
+		return "", fmt.Errorf("windows zip not found in release assets")
+	}
+	if checksumURL == "" {
+		return "", fmt.Errorf("checksums.txt not found in release assets")
+	}
+
+	progress("downloading", fmt.Sprintf("Downloading %s...", filepath.Base(zipURL)))
+
+	zipPath, checksumPath, zipFilename, err := downloadRelease(zipURL, checksumURL)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	defer os.Remove(zipPath)
+	defer os.Remove(checksumPath)
+
+	expectedHash, err := parseChecksum(checksumPath, zipFilename)
+	if err != nil {
+		return "", fmt.Errorf("parse checksum: %w", err)
+	}
+
+	progress("verifying", "Verifying SHA256...")
+	if err := verifySHA256(zipPath, expectedHash); err != nil {
+		return "", fmt.Errorf("verification failed: %w", err)
+	}
+
+	progress("applying", "Applying update...")
+	newExePath := filepath.Join(exeDir(), "zapret-core.exe.new")
+	if err := extractExe(zipPath, newExePath); err != nil {
+		return "", fmt.Errorf("extract: %w", err)
+	}
+
+	if err := applyUpdate(newExePath, remoteVersion); err != nil {
+		_ = os.Remove(newExePath)
+		return "", fmt.Errorf("apply: %w", err)
+	}
+
+	return remoteVersion, nil
+}
+
+// applyUpdate performs atomic file swap
 func applyUpdate(newExePath, remoteVersion string) error {
-	exePath := getExePath()
-	oldExePath := exePath + ".old"
+	current := exePath()
+	oldExe := current + ".old"
 
 	// Rename current exe to .old
-	if err := os.Rename(exePath, oldExePath); err != nil {
+	if err := os.Rename(current, oldExe); err != nil {
 		return fmt.Errorf("rename current exe: %w", err)
 	}
 
 	// Rename new exe to current exe
-	if err := os.Rename(newExePath, exePath); err != nil {
+	if err := os.Rename(newExePath, current); err != nil {
 		// Try to restore old exe on failure
-		_ = os.Rename(oldExePath, exePath)
+		_ = os.Rename(oldExe, current)
 		return fmt.Errorf("rename new exe: %w", err)
 	}
 
-	// Don't restart automatically - let user restart manually
-	logSuccess("Updated %s → %s. Please restart the application.", Version, remoteVersion)
 	return nil
 }

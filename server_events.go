@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -69,7 +68,6 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 	s.setOperation("update-self")
 	defer s.clearOperation()
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -81,162 +79,47 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	progressChan := make(chan UpdateSelfProgress, 10)
+	type result struct {
+		newVersion string
+		err        error
+	}
+	done := make(chan result, 1)
 
-	// Send initial event
-	s.sendSSE(w, "message", UpdateSelfProgress{Type: "checking", Message: "Checking for updates..."})
-	flusher.Flush()
-
-	// Start update in goroutine
 	go func() {
-		remoteVersion, err := checkForUpdate()
-		if err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to check for updates: %v", err)}
-			close(progressChan)
-			return
-		}
-
-		if remoteVersion == "" {
-			progressChan <- UpdateSelfProgress{Type: "up_to_date", Message: fmt.Sprintf("Already up to date (%s)", Version)}
-			close(progressChan)
-			return
-		}
-
-		progressChan <- UpdateSelfProgress{Type: "found", Message: fmt.Sprintf("New version available: %s → %s", Version, remoteVersion)}
-
-		// Get release info
-		client := &http.Client{Timeout: 30 * time.Second}
-		url := "https://api.github.com/repos/elev1e1nSure/zapret-core/releases/latest"
-
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to create request: %v", err)}
-			close(progressChan)
-			return
-		}
-		req.Header.Set("User-Agent", "zapret-core-updater")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to fetch release info: %v", err)}
-			close(progressChan)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to fetch release info: HTTP %d", resp.StatusCode)}
-			close(progressChan)
-			return
-		}
-
-		var release GitHubRelease
-		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to parse release info: %v", err)}
-			close(progressChan)
-			return
-		}
-
-		// Find zip and checksums assets
-		var zipURL, checksumURL string
-		for _, asset := range release.Assets {
-			if strings.Contains(asset.Name, "windows-amd64.zip") {
-				zipURL = asset.BrowserDownloadURL
-			} else if asset.Name == "checksums.txt" {
-				checksumURL = asset.BrowserDownloadURL
-			}
-		}
-
-		if zipURL == "" {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: "Windows zip not found in release assets"}
-			close(progressChan)
-			return
-		}
-
-		if checksumURL == "" {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: "checksums.txt not found in release assets"}
-			close(progressChan)
-			return
-		}
-
-		progressChan <- UpdateSelfProgress{Type: "downloading", Message: fmt.Sprintf("Downloading %s...", filepath.Base(zipURL))}
-
-		// Download files
-		zipPath, checksumPath, zipFilename, err := downloadRelease(zipURL, checksumURL)
-		if err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Download failed: %v", err)}
-			close(progressChan)
-			return
-		}
-		defer os.Remove(zipPath)
-		defer os.Remove(checksumPath)
-
-		// Parse checksum
-		expectedHash, err := parseChecksum(checksumPath, zipFilename)
-		if err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to parse checksum: %v", err)}
-			close(progressChan)
-			return
-		}
-
-		progressChan <- UpdateSelfProgress{Type: "verifying", Message: "Verifying SHA256..."}
-
-		// Verify SHA256
-		if err := verifySHA256(zipPath, expectedHash); err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Verification failed: %v", err)}
-			close(progressChan)
-			return
-		}
-
-		progressChan <- UpdateSelfProgress{Type: "applying", Message: "Applying update..."}
-
-		// Extract exe
-		exeDir := getExeDir()
-		newExePath := filepath.Join(exeDir, "zapret-core.exe.new")
-		if err := extractExe(zipPath, newExePath); err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Extraction failed: %v", err)}
-			os.Remove(zipPath)
-			os.Remove(checksumPath)
-			close(progressChan)
-			return
-		}
-
-		// Clean up zip and checksums before applying update
-		os.Remove(zipPath)
-		os.Remove(checksumPath)
-
-		// Apply update
-		if err := applyUpdate(newExePath, remoteVersion); err != nil {
-			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to apply update: %v", err)}
-			os.Remove(newExePath)
-			close(progressChan)
-			return
-		}
-
-		progressChan <- UpdateSelfProgress{Type: "success", Message: "Updated successfully. Restarting..."}
-		close(progressChan)
+		newVersion, err := performSelfUpdate(func(stage, msg string) {
+			s.sendSSE(w, "progress", UpdateSelfProgress{Type: stage, Message: msg})
+			flusher.Flush()
+		})
+		done <- result{newVersion, err}
 	}()
 
-	// Stream progress
-	for progress := range progressChan {
-		if progress.Type == "error" {
-			s.sendSSE(w, "error", ErrorResponse{Error: progress.Message})
-			flusher.Flush()
-			return
-		} else if progress.Type == "success" {
-			s.sendSSE(w, "success", SuccessResponse{Status: "updated", Message: progress.Message})
-			flusher.Flush()
-			// Note: applyUpdate will restart the process, so we don't return here
-			return
-		} else if progress.Type == "up_to_date" {
-			s.sendSSE(w, "success", SuccessResponse{Status: "up_to_date", Message: progress.Message})
-			flusher.Flush()
-			return
-		}
+	res := <-done
 
-		s.sendSSE(w, "progress", progress)
+	if res.err != nil {
+		s.sendSSE(w, "error", ErrorResponse{Error: res.err.Error()})
 		flusher.Flush()
+		return
 	}
+
+	if res.newVersion == "" {
+		s.sendSSE(w, "success", SuccessResponse{
+			Status:  "up_to_date",
+			Message: fmt.Sprintf("Already up to date (%s)", Version),
+		})
+		flusher.Flush()
+		return
+	}
+
+	s.sendSSE(w, "success", SuccessResponse{
+		Status:  "updated",
+		Message: fmt.Sprintf("Update installed (%s → %s). Please restart the server.", Version, res.newVersion),
+	})
+	flusher.Flush()
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		os.Exit(0)
+	}()
 }
 
 func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {

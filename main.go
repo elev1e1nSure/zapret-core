@@ -4,16 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
-	"time"
 )
 
 func main() {
-	cleanupOldExe()
+	cleanupUpdateArtifacts()
 
 	if err := initLogger(); err != nil {
 		fmt.Printf("\033[31m[!] Logger initialization error: %v\033[0m\n", err)
@@ -384,119 +381,19 @@ func runImport(filepath string) {
 func runSelfUpdate() {
 	logInfo("Current version: %s", Version)
 
-	remoteVersion, err := checkForUpdate()
+	newVersion, err := performSelfUpdate(func(stage, msg string) {
+		logInfo("%s", msg)
+	})
 	if err != nil {
-		logError("Failed to check for updates: %v", err)
+		logError("Update failed: %v", err)
 		os.Exit(1)
 	}
 
-	if remoteVersion == "" {
+	if newVersion == "" {
 		logInfo("Already up to date.")
 		return
 	}
 
-	logInfo("New version available: %s", remoteVersion)
-
-	// Get release info to find asset URLs
-	client := &http.Client{Timeout: 30 * time.Second}
-	url := "https://api.github.com/repos/elev1e1nSure/zapret-core/releases/latest"
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		logError("Failed to create request: %v", err)
-		os.Exit(1)
-	}
-	req.Header.Set("User-Agent", "zapret-core-updater")
-
-	// Add GitHub token if available
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "token "+token)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		logError("Failed to fetch release info: %v", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logError("Failed to fetch release info: HTTP %d", resp.StatusCode)
-		os.Exit(1)
-	}
-
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		logError("Failed to parse release info: %v", err)
-		os.Exit(1)
-	}
-
-	// Find zip and checksums assets
-	var zipURL, checksumURL string
-	for _, asset := range release.Assets {
-		if strings.Contains(asset.Name, "windows-amd64.zip") {
-			zipURL = asset.BrowserDownloadURL
-		} else if asset.Name == "checksums.txt" {
-			checksumURL = asset.BrowserDownloadURL
-		}
-	}
-
-	if zipURL == "" {
-		logError("Windows zip not found in release assets")
-		os.Exit(1)
-	}
-
-	if checksumURL == "" {
-		logError("checksums.txt not found in release assets")
-		os.Exit(1)
-	}
-
-	logInfo("Downloading update...")
-
-	// Download files
-	zipPath, checksumPath, zipFilename, err := downloadRelease(zipURL, checksumURL)
-	if err != nil {
-		logError("Download failed: %v", err)
-		os.Exit(1)
-	}
-
-	// Parse checksum
-	expectedHash, err := parseChecksum(checksumPath, zipFilename)
-	if err != nil {
-		logError("Failed to parse checksum: %v", err)
-		os.Remove(zipPath)
-		os.Remove(checksumPath)
-		os.Exit(1)
-	}
-
-	// Verify SHA256
-	logInfo("Verifying download...")
-	if err := verifySHA256(zipPath, expectedHash); err != nil {
-		logError("Verification failed: %v", err)
-		os.Remove(zipPath)
-		os.Remove(checksumPath)
-		os.Exit(1)
-	}
-
-	// Extract exe
-	logInfo("Extracting update...")
-	exeDir := getExeDir()
-	newExePath := filepath.Join(exeDir, "zapret-core.exe.new")
-	if err := extractExe(zipPath, newExePath); err != nil {
-		logError("Extraction failed: %v", err)
-		os.Remove(zipPath)
-		os.Remove(checksumPath)
-		os.Exit(1)
-	}
-
-	// Clean up zip and checksums before applying update
-	os.Remove(zipPath)
-	os.Remove(checksumPath)
-
-	// Apply update
-	if err := applyUpdate(newExePath, remoteVersion); err != nil {
-		logError("Failed to apply update: %v", err)
-		os.Remove(newExePath)
-		os.Exit(1)
-	}
+	logSuccess("Updated %s → %s. Please restart the application.", Version, newVersion)
+	os.Exit(0)
 }
