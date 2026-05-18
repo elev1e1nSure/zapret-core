@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -116,7 +117,16 @@ func printBanner() {
 	bold := "\033[1m"
 	cyan := "\033[36m"
 	reset := "\033[0m"
-	fmt.Fprintf(logWriter, "\n%s%s╔════════════════════════════════════════════════════════════╗%s\n", bold, cyan, reset)
-	fmt.Fprintf(logWriter, "%s%s║%s              zapret-core v1.0.1              %s%s║%s\n", bold, cyan, reset, bold, cyan, reset)
-	fmt.Fprintf(logWriter, "%s%s╚════════════════════════════════════════════════════════════╝%s\n\n", bold, cyan, reset)
+
+	width := 62 // видимая ширина между ╔ и ╗
+	title := "zapret-core " + Version
+	padding := width - len(title)
+	left := padding / 2
+	right := padding - left
+
+	top := fmt.Sprintf("%s%s╔%s╗%s", bold, cyan, strings.Repeat("═", width), reset)
+	mid := fmt.Sprintf("%s%s║%s%s%s%s║%s", bold, cyan, reset, strings.Repeat(" ", left)+title+strings.Repeat(" ", right), bold, cyan, reset)
+	bot := fmt.Sprintf("%s%s╚%s╝%s", bold, cyan, strings.Repeat("═", width), reset)
+
+	fmt.Fprintf(logWriter, "\n%s\n%s\n%s\n\n", top, mid, bot)
 }
