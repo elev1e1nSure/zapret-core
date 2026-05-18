@@ -72,6 +72,8 @@ jobs:
           $docs = @()
           $refactor = @()
           $chore = @()
+          $ci = @()
+          $debug = @()
           $other = @()
           
           Write-Host "Commit count: $($commits.Count)"
@@ -98,6 +100,14 @@ jobs:
               $chore += "  - **$($matches[1])**: $($matches[2])"
             } elseif ($commit -match '^chore:\s+(.+)$') {
               $chore += "  - $($matches[1])"
+            } elseif ($commit -match '^ci\((.+)\):\s+(.+)$') {
+              $ci += "  - **$($matches[1])**: $($matches[2])"
+            } elseif ($commit -match '^ci:\s+(.+)$') {
+              $ci += "  - $($matches[1])"
+            } elseif ($commit -match '^debug\((.+)\):\s+(.+)$') {
+              $debug += "  - **$($matches[1])**: $($matches[2])"
+            } elseif ($commit -match '^debug:\s+(.+)$') {
+              $debug += "  - $($matches[1])"
             } else {
               $other += "  - $commit"
             }
@@ -132,6 +142,18 @@ jobs:
           if ($chore.Count -gt 0) {
             $notes += "### Chores`n"
             $chore | ForEach-Object { $notes += "$_`n" }
+            $notes += "`n"
+          }
+          
+          if ($ci.Count -gt 0) {
+            $notes += "### CI`n"
+            $ci | ForEach-Object { $notes += "$_`n" }
+            $notes += "`n"
+          }
+          
+          if ($debug.Count -gt 0) {
+            $notes += "### Debug`n"
+            $debug | ForEach-Object { $notes += "$_`n" }
             $notes += "`n"
           }
           
