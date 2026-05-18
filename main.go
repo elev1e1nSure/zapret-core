@@ -449,7 +449,7 @@ func runSelfUpdate() {
 	logInfo("Downloading update...")
 
 	// Download files
-	zipPath, checksumPath, err := downloadRelease(zipURL, checksumURL)
+	zipPath, checksumPath, zipFilename, err := downloadRelease(zipURL, checksumURL)
 	if err != nil {
 		logError("Download failed: %v", err)
 		os.Exit(1)
@@ -458,7 +458,6 @@ func runSelfUpdate() {
 	defer os.Remove(checksumPath)
 
 	// Parse checksum
-	zipFilename := filepath.Base(zipPath)
 	expectedHash, err := parseChecksum(checksumPath, zipFilename)
 	if err != nil {
 		logError("Failed to parse checksum: %v", err)

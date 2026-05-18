@@ -162,7 +162,7 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 		progressChan <- UpdateSelfProgress{Type: "downloading", Message: fmt.Sprintf("Downloading %s...", filepath.Base(zipURL))}
 
 		// Download files
-		zipPath, checksumPath, err := downloadRelease(zipURL, checksumURL)
+		zipPath, checksumPath, zipFilename, err := downloadRelease(zipURL, checksumURL)
 		if err != nil {
 			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Download failed: %v", err)}
 			close(progressChan)
@@ -172,7 +172,6 @@ func (s *APIServer) handleUpdateSelf(w http.ResponseWriter, r *http.Request) {
 		defer os.Remove(checksumPath)
 
 		// Parse checksum
-		zipFilename := filepath.Base(zipPath)
 		expectedHash, err := parseChecksum(checksumPath, zipFilename)
 		if err != nil {
 			progressChan <- UpdateSelfProgress{Type: "error", Message: fmt.Sprintf("Failed to parse checksum: %v", err)}

@@ -169,24 +169,25 @@ func checkForUpdate() (string, error) {
 	return release.TagName, nil
 }
 
-// downloadRelease downloads the zip and checksums.txt files
-func downloadRelease(zipURL, checksumURL string) (string, string, error) {
+// downloadRelease downloads zip and checksums.txt to exeDir
+func downloadRelease(zipURL, checksumURL string) (string, string, string, error) {
 	exeDir := getExeDir()
-	zipPath := filepath.Join(exeDir, "zapret-core-update.zip")
+	zipFilename := filepath.Base(zipURL)
+	zipPath := filepath.Join(exeDir, zipFilename)
 	checksumPath := filepath.Join(exeDir, "checksums.txt")
 
 	// Download checksums first
 	if err := downloadFile(checksumURL, checksumPath); err != nil {
-		return "", "", fmt.Errorf("download checksums: %w", err)
+		return "", "", "", fmt.Errorf("download checksums: %w", err)
 	}
 
 	// Download zip
 	if err := downloadFile(zipURL, zipPath); err != nil {
 		os.Remove(checksumPath)
-		return "", "", fmt.Errorf("download zip: %w", err)
+		return "", "", "", fmt.Errorf("download zip: %w", err)
 	}
 
-	return zipPath, checksumPath, nil
+	return zipPath, checksumPath, zipFilename, nil
 }
 
 // verifySHA256 computes SHA256 of file and compares with expected hash
