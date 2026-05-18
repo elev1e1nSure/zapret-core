@@ -62,9 +62,9 @@ jobs:
           Write-Host "Previous tag: $prevTag"
           
           if ($prevTag) {
-            $commits = git log $prevTag..HEAD --pretty=format:"%s"
+            $commits = & git log "${prevTag}..HEAD" --pretty=format:%s
           } else {
-            $commits = git log HEAD --pretty=format:"%s" -20
+            $commits = & git log HEAD --pretty=format:%s -20
           }
           
           $feat = @()
