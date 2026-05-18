@@ -93,6 +93,9 @@ func main() {
 		logInfo("  zapret-core --reset   — clear strategies for current ASN")
 		logInfo("  zapret-core --export  — export strategies to file")
 		logInfo("  zapret-core --import  — import strategies from file")
+		logWarn("")
+		logWarn("Note: --watch and --server cannot run simultaneously.")
+		logWarn("If you need watchdog with API, use POST /api/watchdog instead.")
 	}
 }
 
