@@ -6,24 +6,22 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Automatic DPI bypass engine for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
+DPI bypass tool for YouTube and Discord on Windows. Finds a working strategy for your ISP on its own, remembers it, and recovers when your ISP updates their blocking — no manual configuration needed.
 
 Built on top of [zapret](https://github.com/bol-van/zapret) by bol-van and inspired by [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal.
 
 ---
 
-## How it works
+## Why this exists
 
-Most DPI bypass tools give you a list of 80+ strategies and say "try them one by one". zapret-core does that for you: it generates parameter combinations, tests what actually works for your ISP, and remembers the result. Next time it starts with the best known strategy immediately.
-
-If your ISP updates their blocking — watchdog detects it and finds a new working strategy automatically.
+Most DPI bypass tools give you a list of 80+ strategies and say "try them one by one". zapret-core does that for you: it tests parameter combinations, finds what actually works for your ISP, and remembers the result. Next run it starts with the best known strategy immediately. If your ISP updates their blocking — watchdog detects it and finds a new one automatically.
 
 ---
 
 ## Requirements
 
-- Windows 7 or newer
-- Administrator rights (required — WinDivert installs a kernel driver)
+- Windows 7+
+- Administrator rights — WinDivert installs a kernel driver, won't work without it
 - Internet connection for ISP detection and testing
 
 ---
@@ -50,15 +48,11 @@ lists/
 
 The `data/` folder is created automatically on first run.
 
-> Always run as administrator — WinDivert won't load otherwise.
-
 ---
 
 ### Build from source
 
-Requirements:
-- Go 1.26.3 or newer
-- Windows
+You need Go 1.21+ and Windows.
 
 ```bash
 git clone https://github.com/elev1e1nSure/zapret-core.git
@@ -66,27 +60,23 @@ cd zapret-core
 go build -o zapret-core.exe .
 ```
 
-Or use the provided build script:
+Or use the build script — it puts everything into `dist/`:
 
 ```bash
 build.bat
 ```
 
-This creates a distribution package in `dist/`.
-
 ---
 
 ## Usage
 
-### Start with best known strategy
+### Just run it
 
 ```
 zapret-core.exe
 ```
 
-Detects your ISP, loads the best strategy from the knowledge base, and starts. Runs until Ctrl+C.
-
-If the knowledge base is empty — prompts you to run `--find` first.
+Detects your ISP, loads the best strategy from the knowledge base, and runs until Ctrl+C. If the knowledge base is empty — prompts you to run `--find` first.
 
 ---
 
@@ -96,7 +86,7 @@ If the knowledge base is empty — prompts you to run `--find` first.
 zapret-core.exe --find
 ```
 
-Tests up to 137 parameter combinations and stops at the first one that works. Progress is shown in real time:
+Tests up to 137 combinations and stops at the first one that works:
 
 ```
 [1/137] Testing: auto-1 [fake/ts/file]
@@ -108,9 +98,9 @@ Tests up to 137 parameter combinations and stops at the first one that works. Pr
 [+] Working strategy found: auto-4 [fake/badseq/file]
 ```
 
-The result is saved to the knowledge base and used on subsequent runs.
+The result is saved and used on subsequent runs.
 
-**How long does it take:** best case — a few minutes. Worst case — up to 2 hours if nothing works immediately. In practice most users find a working strategy within the first 10–20 attempts.
+Best case — a few minutes. Worst case — up to 2 hours. In practice most users find something within the first 10–20 attempts.
 
 ---
 
@@ -120,9 +110,7 @@ The result is saved to the knowledge base and used on subsequent runs.
 zapret-core.exe --watch
 ```
 
-Starts background monitoring. Checks YouTube and Discord every 60 seconds. If three checks in a row fail — automatically finds a new strategy and switches to it.
-
-Stop with Ctrl+C. Both watchdog and winws will shut down cleanly.
+Checks YouTube and Discord every 60 seconds. Three failures in a row — automatically finds a new strategy and switches. Stop with Ctrl+C, everything shuts down cleanly.
 
 ---
 
@@ -132,7 +120,7 @@ Stop with Ctrl+C. Both watchdog and winws will shut down cleanly.
 zapret-core.exe --status
 ```
 
-Shows whether winws is running and the best known strategy for your ISP. Exits immediately.
+Shows whether winws is running and which strategy is in use. Exits immediately.
 
 ---
 
@@ -152,7 +140,7 @@ Stops winws. Exits immediately.
 zapret-core.exe --update
 ```
 
-Downloads updated lists from the Flowseal/zapret-discord-youtube repository and updates files in the `lists/` folder. Progress is shown in real time:
+Downloads updated lists from the Flowseal repository:
 
 ```
 [1/5] Updating ipset-all.txt...
@@ -163,7 +151,7 @@ Downloads updated lists from the Flowseal/zapret-discord-youtube repository and 
 Lists updated successfully.
 ```
 
-On download error, files remain unchanged.
+On download error, existing files are left unchanged.
 
 ---
 
@@ -173,11 +161,11 @@ On download error, files remain unchanged.
 zapret-core.exe --server
 ```
 
-Starts an HTTP server on `127.0.0.1:7432`. Intended for integration with external applications. Stops on Ctrl+C.
+Starts an HTTP server on `127.0.0.1:7432` for integration with external applications. Stop with Ctrl+C.
 
 ---
 
-## HTTP API Reference
+## API Reference
 
 All endpoints are local-only (`127.0.0.1:7432`).
 
@@ -213,7 +201,7 @@ All endpoints are local-only (`127.0.0.1:7432`).
 
 ### POST /api/start
 
-Start the best known strategy. Returns `404` if no strategies are known yet.
+Starts the best known strategy. Returns `404` if no strategies are known yet.
 
 ```json
 { "status": "started", "strategy": "auto-4 [fake/badseq/file]" }
@@ -221,15 +209,13 @@ Start the best known strategy. Returns `404` if no strategies are known yet.
 
 ### POST /api/stop
 
-Stops winws.
-
 ```json
 { "status": "stopped" }
 ```
 
 ### POST /api/find
 
-Start strategy search. Returns an SSE stream.
+Starts strategy search. Returns an SSE stream.
 
 ```
 event: progress
@@ -243,7 +229,7 @@ Returns `409 Conflict` if another operation is already running.
 
 ### POST /api/update
 
-Update lists from GitHub. Returns an SSE stream.
+Updates lists from GitHub. Returns an SSE stream.
 
 ```
 event: progress
@@ -257,7 +243,7 @@ Returns `409 Conflict` if another operation is already running.
 
 ### POST /api/watchdog
 
-Start watchdog in background. Returns immediately.
+Starts watchdog in the background. Returns immediately.
 
 ```json
 { "status": "started", "message": "watchdog running in background" }
@@ -273,7 +259,7 @@ Start watchdog in background. Returns immediately.
 
 ## Configuration
 
-`data/config.json` is created automatically on first run:
+`data/config.json` is created automatically on first run. You can edit any parameter:
 
 ```json
 {
@@ -288,7 +274,7 @@ Start watchdog in background. Returns immediately.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `score_threshold` | `0.6` | Minimum test score to accept a strategy (0–1) |
+| `score_threshold` | `0.6` | Minimum score to accept a strategy (0–1) |
 | `fail_threshold` | `3` | Consecutive failures before watchdog triggers recovery |
 | `check_interval` | `60` | How often watchdog checks connectivity (seconds) |
 | `init_delay` | `5` | How long to wait after starting winws before testing (seconds) |
@@ -299,9 +285,9 @@ Start watchdog in background. Returns immediately.
 
 ## Knowledge Base
 
-`data/knowledge.json` stores strategies that worked for each ISP (by ASN). On the next run they are tested first — before any full search begins.
+`data/knowledge.json` is the program's memory — strategies that worked for each ISP by ASN. On the next run they're tested first, before any full search.
 
-Deleting the file causes a full search from scratch. The file does not grow indefinitely — duplicate entries are updated, not added.
+Delete the file to start from scratch. Duplicates are updated, not appended, so the file doesn't grow indefinitely.
 
 ---
 
@@ -313,44 +299,38 @@ Before searching, zapret-core checks for software known to interfere with WinDiv
 - AdGuardSvc
 - discordfix_zapret
 - winws1, winws2
-- Killer NIC
-- Intel Connectivity Network Service
+- Killer NIC / Intel Connectivity Network Service
 - Check Point (TracSrvWrapper, EPWD)
 - SmartByte
 
-If a conflict is found the search stops with a message. Disable the conflicting software and try again.
+If anything is found the search stops with a message. Disable the conflicting software and try again.
 
 ---
 
 ## Logs
 
-Logs are written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `[ERROR]`.
+Written to both the console and `data/zapret.log`. Levels: `[INFO]`, `[WARN]`, `[ERROR]`.
 
 ---
 
 ## Troubleshooting
 
-**"No known strategies. Run --find"**
-The knowledge base is empty or has no entries for your ISP. Run `zapret-core.exe --find`.
+**"No known strategies. Run --find"** — the knowledge base is empty or has no entries for your ISP. Run `--find`.
 
-**"No working strategy found"**
-No combination passed the score threshold. Check your internet connection or increase `test_timeout` in config.json.
+**"No working strategy found"** — nothing passed the score threshold. Check your connection or increase `test_timeout` in config.json.
 
-**"Resolve conflicts and try again"**
-Conflicting software is running. Stop it and retry.
+**"Resolve conflicts and try again"** — conflicting software is running. Stop it and retry.
 
-**"failed to start winws"**
-`assets/winws.exe` not found or missing administrator rights.
+**"failed to start winws"** — `assets/winws.exe` not found or missing administrator rights.
 
-**409 in API**
-Another operation is in progress. Wait for it to finish or stop it via `POST /api/stop`.
+**409 in API** — another operation is in progress. Wait or stop it via `POST /api/stop`.
 
 ---
 
 ## Credits
 
-- [zapret](https://github.com/bol-van/zapret) by bol-van — the core DPI bypass engine (winws, WinDivert integration, fake packet binaries)
-- [zapret-discord-youtube](https://github.com/flowseal/zapret-discord-youtube) by Flowseal — strategy presets and parameter research that informed the search space in this project
+- [bol-van](https://github.com/bol-van/zapret) — for zapret itself, winws, WinDivert, and the fake packet binaries
+- [Flowseal](https://github.com/flowseal/zapret-discord-youtube) — for strategy presets and parameter research that shaped the search space here
 
 ---
 
