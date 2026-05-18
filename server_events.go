@@ -216,10 +216,22 @@ func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 // handleLogs streams the log file as SSE.
 // Query param: ?lines=N (default 100) — how many recent lines to send first.
+// Query param: ?download=true — returns entire log file as download instead of SSE.
 // After the backlog, new lines are pushed as they are written.
 func (s *APIServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	logPath := filepath.Join(cwd, "data", "zapret.log")
+
+	// Download mode
+	if r.URL.Query().Get("download") == "true" {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename=\"zapret.log\"")
+		http.ServeFile(w, r, logPath)
 		return
 	}
 
@@ -229,9 +241,6 @@ func (s *APIServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 			tail = n
 		}
 	}
-
-	cwd, _ := os.Getwd()
-	logPath := filepath.Join(cwd, "data", "zapret.log")
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
