@@ -9,11 +9,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -307,21 +305,7 @@ func applyUpdate(newExePath, remoteVersion string) error {
 		return fmt.Errorf("rename new exe: %w", err)
 	}
 
-	// Restart process
-	logSuccess("Updated %s → %s. Restarting...", Version, remoteVersion)
-
-	cmd := exec.Command(exePath, os.Args[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: 0x00000010, // CREATE_NEW_CONSOLE
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start new process: %w", err)
-	}
-
-	os.Exit(0)
+	// Don't restart automatically - let user restart manually
+	logSuccess("Updated %s → %s. Please restart the application.", Version, remoteVersion)
 	return nil
 }
