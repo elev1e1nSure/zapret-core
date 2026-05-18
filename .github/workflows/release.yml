@@ -74,6 +74,9 @@ jobs:
           $chore = @()
           $other = @()
           
+          Write-Host "Commit count: $($commits.Count)"
+          Write-Host "First commit: '$($commits[0])'"
+          $commits | ForEach-Object { Write-Host "RAW: '$_'" }
           foreach ($commit in $commits) {
             if ($commit -match '^feat\((.+)\):\s+(.+)$') {
               $feat += "  - **$($matches[1])**: $($matches[2])"
