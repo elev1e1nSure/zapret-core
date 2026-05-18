@@ -235,7 +235,7 @@ zapret-core.exe --server
 ### GET /api/version
 
 ```json
-{ "version": "v1.2.1" }
+{ "version": "v1.2.5" }
 ```
 
 ### GET /api/status
@@ -333,9 +333,9 @@ data: {"type":"error","error":"download ipset-all.txt: ..."}
 ```
 data: {"type":"checking","message":"Checking for updates..."}
 
-data: {"type":"found","message":"New version available: v1.2.0 → v1.2.1"}
+data: {"type":"found","message":"New version available: v1.2.0 → v1.2.5"}
 
-data: {"type":"downloading","message":"Downloading zapret-core-v1.2.1-windows-amd64.zip..."}
+data: {"type":"downloading","message":"Downloading zapret-core-v1.2.5-windows-amd64.zip..."}
 
 data: {"type":"verifying","message":"Verifying SHA256..."}
 
@@ -347,7 +347,7 @@ data: {"type":"success","status":"updated","message":"Updated successfully. Rest
 После `success` процесс перезапускается автоматически. Если обновлений нет:
 
 ```
-data: {"type":"up_to_date","status":"up_to_date","message":"Already up to date (v1.2.1)"}
+data: {"type":"up_to_date","status":"up_to_date","message":"Already up to date (v1.2.5)"}
 ```
 
 `409 Conflict` если занято.
