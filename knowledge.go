@@ -156,3 +156,94 @@ func vectorsEqual(a, b StrategyVector) bool {
 
 	return true
 }
+
+// ExportFormat wraps knowledge entries with metadata for export/import
+type ExportFormat struct {
+	ExportedAt string          `json:"exported_at"`
+	EntryCount int             `json:"entry_count"`
+	Entries    []KnowledgeEntry `json:"entries"`
+}
+
+// normalizeASN removes "AS" prefix if present for consistent comparison
+func normalizeASN(asn string) string {
+	if len(asn) > 2 && asn[:2] == "AS" {
+		return asn[2:]
+	}
+	return asn
+}
+
+// RemoveForASN removes all entries matching the given ASN
+// Returns the number of entries removed
+func (k *Knowledge) RemoveForASN(asn string) int {
+	count := 0
+	var newEntries []KnowledgeEntry
+	targetASN := normalizeASN(asn)
+	for _, e := range k.Entries {
+		if normalizeASN(e.ASN) != targetASN {
+			newEntries = append(newEntries, e)
+		} else {
+			count++
+		}
+	}
+	k.Entries = newEntries
+	return count
+}
+
+// MergeEntry merges a single entry into knowledge
+// Returns "added", "skipped", or "updated" based on comparison logic
+// Comparison: Score * Hits wins; if equal, newer LastSeen wins
+func (k *Knowledge) MergeEntry(entry KnowledgeEntry) string {
+	importWeight := entry.Score * float64(entry.Hits)
+	targetASN := normalizeASN(entry.ASN)
+
+	for i, e := range k.Entries {
+		if normalizeASN(e.ASN) == targetASN {
+			existingWeight := e.Score * float64(e.Hits)
+
+			// Compare using same formula as BestForASN
+			if importWeight > existingWeight {
+				// Replace with better entry
+				k.Entries[i] = entry
+				return "updated"
+			} else if importWeight == existingWeight {
+				// Tie-break by timestamp
+				if entry.LastSeen.After(e.LastSeen) {
+					k.Entries[i] = entry
+					return "updated"
+				}
+				return "skipped"
+			}
+			return "skipped"
+		}
+	}
+
+	// No entry for this ASN - add new
+	k.Entries = append(k.Entries, entry)
+	return "added"
+}
+
+// Export returns current knowledge in export format
+func (k *Knowledge) Export() ExportFormat {
+	return ExportFormat{
+		ExportedAt: time.Now().Format(time.RFC3339),
+		EntryCount: len(k.Entries),
+		Entries:    k.Entries,
+	}
+}
+
+// Import merges all entries from export format into knowledge
+// Returns counts of added, skipped, and updated entries
+func (k *Knowledge) Import(ef ExportFormat) (added, skipped, updated int) {
+	for _, entry := range ef.Entries {
+		result := k.MergeEntry(entry)
+		switch result {
+		case "added":
+			added++
+		case "skipped":
+			skipped++
+		case "updated":
+			updated++
+		}
+	}
+	return
+}
