@@ -115,7 +115,15 @@ func runBest() {
 		os.Exit(1)
 	}
 	logSuccess("Running. Press Ctrl+C to stop.")
-	select {} // block forever
+
+	// Handle Ctrl+C to stop winws before exiting
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	<-sigCh
+
+	logInfo("Stopping...")
+	StopWinws()
+	logInfo("Stopped.")
 }
 
 // runFind iterates through strategies to find a working one
