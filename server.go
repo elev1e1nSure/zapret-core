@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type APIServer struct {
 	mu               sync.Mutex
 	subscribersMu    sync.Mutex
 	subscribers      map[string]chan string
+	subscriberCount  uint64
 	opInProgress     bool
 	opType           string
 	watchdogRunning  bool
@@ -233,11 +235,16 @@ func (s *APIServer) emitEvent(event StatusEvent) {
 		return
 	}
 
+	droppedCount := 0
 	for _, ch := range s.subscribers {
 		select {
 		case ch <- string(jsonData):
 		default:
+			droppedCount++
 		}
+	}
+	if droppedCount > 0 {
+		logWarn("emitEvent: dropped %d events (channel full)", droppedCount)
 	}
 }
 
@@ -810,7 +817,7 @@ func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate unique subscriber ID
-	subscriberID := strconv.FormatInt(time.Now().UnixNano(), 10)
+	subscriberID := strconv.FormatUint(atomic.AddUint64(&s.subscriberCount, 1), 10)
 
 	// Create channel for this subscriber
 	eventChan := make(chan string, 10)
@@ -865,7 +872,11 @@ func (s *APIServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 	initialEvent.Data.Watchdog = watchdogRunning
 	initialEvent.Data.Strategy = currentStrategy
 
-	jsonData, _ := json.Marshal(initialEvent)
+	jsonData, err := json.Marshal(initialEvent)
+	if err != nil {
+		logError("Failed to marshal initial event: %v", err)
+		return
+	}
 	fmt.Fprintf(w, "data: %s\n\n", jsonData)
 	flusher.Flush()
 
