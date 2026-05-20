@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -29,15 +30,29 @@ func attachConsole() {
 	os.Stderr = conout
 }
 
-// hideConsoleWindow hides the console window for GUI applications
-func hideConsoleWindow() {
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
-	showWindowProc := kernel32.NewProc("ShowWindow")
-	hwnd, _, _ := getConsoleWindow.Call()
-	if hwnd != 0 {
-		showWindowProc.Call(hwnd, 0) // SW_HIDE = 0
+// spawnDaemon re-launches the current executable with the given argument as a
+// fully detached background process: no console window, no parent association.
+// The caller should return immediately after this call.
+func spawnDaemon(arg string) {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = os.Args[0]
 	}
+
+	cmd := exec.Command(exe, arg)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
+	}
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		logError("Failed to start daemon: %v", err)
+		return
+	}
+
+	logInfo("Daemon started (pid %d). Output → data/zapret.log", cmd.Process.Pid)
 }
 
 // exeDir returns the directory of the running executable.

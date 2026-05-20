@@ -2,7 +2,7 @@
 setlocal
 
 echo Building zapret-core...
-go build -ldflags="-s -w -H windowsgui" -o zapret-core.exe .
+go build -ldflags="-s -w" -o zapret-core.exe ./internal
 
 if %ERRORLEVEL% neq 0 (
     echo Build failed
@@ -13,7 +13,7 @@ echo Build successful
 echo.
 echo Creating distribution package...
 
-set VERSION=1.0.0
+set VERSION=1.3.0
 set DIST_DIR=dist\zapret-core-%VERSION%
 
 if exist dist rmdir /s /q dist

@@ -44,12 +44,17 @@ Built on top of [zapret](https://github.com/bol-van/zapret) by bol-van and inspi
 
 Extract anywhere. Run as Administrator.
 
-**Build from source** (requires Go 1.26.3 and Windows):
+**Build from source** (requires Go 1.21+ and Windows):
 
-```bash
+```bat
 git clone https://github.com/elev1e1nSure/zapret-core.git
 cd zapret-core
-go build -o zapret-core.exe .
+
+:: Quick dev build
+go build -ldflags="-s -w" -o zapret-core.exe ./internal
+
+:: Release build (strips debug info + packages dist zip)
+build.bat
 ```
 
 ---

@@ -18,10 +18,19 @@ var startTime time.Time
 
 func main() {
 	startTime = time.Now()
-	attachConsole()
 	cleanupUpdateArtifacts()
 
-	if err := initLogger(); err != nil {
+	// --watch and --server are daemon modes: re-launch self as a detached background
+	// process (invisible, no console window) and exit immediately.
+	// The relaunched process receives "--watch-daemon" / "--server-daemon" so it runs
+	// the actual logic without spawning again.
+	isDaemonRelaunch := len(os.Args) >= 2 && (os.Args[1] == "--watch-daemon" || os.Args[1] == "--server-daemon")
+
+	if !isDaemonRelaunch {
+		attachConsole()
+	}
+
+	if err := initLogger(isDaemonRelaunch); err != nil {
 		fmt.Printf("\033[31m[!] Logger initialization error: %v\033[0m\n", err)
 		os.Exit(1)
 	}
@@ -49,12 +58,16 @@ func main() {
 		printBanner()
 		runStop()
 	case "--watch":
-		hideConsoleWindow()
 		printBanner()
+		spawnDaemon("--watch-daemon")
+		return
+	case "--watch-daemon":
 		runWatch()
 	case "--server":
-		hideConsoleWindow()
 		printBanner()
+		spawnDaemon("--server-daemon")
+		return
+	case "--server-daemon":
 		runServer()
 	case "--updatelists":
 		printBanner()
@@ -210,7 +223,7 @@ func runStop() {
 	logSuccess("Stopped.")
 }
 
-// runWatch starts watchdog with auto-recovery on failure
+// runWatch starts the best known strategy and then launches watchdog with auto-recovery
 func runWatch() {
 	logInfo("Starting watchdog...")
 	provider := GetProvider()
@@ -221,6 +234,20 @@ func runWatch() {
 		logError("Knowledge loading error: %v", err)
 		os.Exit(1)
 	}
+
+	vectors := kb.BestForASN(provider.ASN, 1)
+	if len(vectors) == 0 {
+		logWarn("No known strategies for this provider. Run --find first.")
+		os.Exit(1)
+	}
+
+	strategy := VectorToStrategy(vectors[0], 0)
+	logInfo("Starting strategy: %s", strategy.Name)
+	if err := StartWinws(strategy); err != nil {
+		logError("Failed to start winws: %v", err)
+		os.Exit(1)
+	}
+	logInfo("winws started. Watchdog is monitoring...")
 
 	StartWatchdog(provider.ASN, kb)
 }

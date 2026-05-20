@@ -44,12 +44,17 @@
 
 Распакуй куда угодно. Запускай от администратора.
 
-**Собрать из исходников** (нужен Go 1.26.3 и Windows):
+**Собрать из исходников** (нужен Go 1.21+ и Windows):
 
-```bash
+```bat
 git clone https://github.com/elev1e1nSure/zapret-core.git
 cd zapret-core
-go build -o zapret-core.exe .
+
+:: Быстрая сборка для разработки
+go build -ldflags="-s -w" -o zapret-core.exe ./internal
+
+:: Релизная сборка (упаковывает dist zip с assets и списками)
+build.bat
 ```
 
 ---

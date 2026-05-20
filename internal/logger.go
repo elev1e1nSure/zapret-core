@@ -25,8 +25,9 @@ var (
 	logMu     sync.Mutex
 )
 
-// initLogger initializes the logging system, creates log file, and enables log rotation
-func initLogger() error {
+// initLogger initializes the logging system, creates log file, and enables log rotation.
+// In daemon mode (--watch, --server) output goes only to the log file, not to stdout.
+func initLogger(daemonMode bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
@@ -66,7 +67,11 @@ func initLogger() error {
 	}
 
 	logFile = f
-	logWriter = io.MultiWriter(os.Stdout, f)
+	if daemonMode {
+		logWriter = f
+	} else {
+		logWriter = io.MultiWriter(os.Stdout, f)
+	}
 
 	return nil
 }
