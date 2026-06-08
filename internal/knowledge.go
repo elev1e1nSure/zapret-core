@@ -156,7 +156,8 @@ func vectorsEqual(a, b StrategyVector) bool {
 		a.BadseqIncrement != b.BadseqIncrement ||
 		a.QuicBin != b.QuicBin ||
 		a.AnyProtocol != b.AnyProtocol ||
-		a.IPID != b.IPID {
+		a.IPID != b.IPID ||
+		a.AutoTTL != b.AutoTTL {
 		return false
 	}
 
