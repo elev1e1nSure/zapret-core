@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -34,9 +35,16 @@ type TestResult struct {
 	Details map[string]bool
 }
 
+// hiddenCmd creates an exec.Command that runs without showing a console window
+func hiddenCmd(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd
+}
+
 // StopWinws kills all running winws.exe processes
 func StopWinws() error {
-	cmd := exec.Command("taskkill", "/F", "/IM", "winws.exe")
+	cmd := hiddenCmd("taskkill", "/F", "/IM", "winws.exe")
 	if err := cmd.Run(); err != nil {
 		// exit code 128 = process not found — not an error
 		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 128 {
@@ -50,7 +58,7 @@ func StopWinws() error {
 
 // IsWinwsRunning checks if winws.exe process is currently running
 func IsWinwsRunning() bool {
-	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq winws.exe")
+	cmd := hiddenCmd("tasklist", "/FI", "IMAGENAME eq winws.exe")
 	output, err := cmd.Output()
 	if err != nil {
 		return false
@@ -61,7 +69,7 @@ func IsWinwsRunning() bool {
 // StartWinws launches winws.exe with the given strategy arguments
 func StartWinws(s *Strategy) error {
 	path := winwsPath()
-	cmd := exec.Command(path, s.Args...)
+	cmd := hiddenCmd(path, s.Args...)
 	cmd.Dir = assetsDir()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start winws: %w", err)
@@ -153,7 +161,7 @@ func CheckConflicts() []string {
 	}
 
 	for _, svc := range services {
-		cmd := exec.Command("sc", "query", svc)
+		cmd := hiddenCmd("sc", "query", svc)
 		out, _ := cmd.Output()
 		if contains(string(out), "RUNNING") {
 			conflicts = append(conflicts, svc)
@@ -161,28 +169,28 @@ func CheckConflicts() []string {
 	}
 
 	// AdguardSvc process check
-	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq AdguardSvc.exe")
+	cmd := hiddenCmd("tasklist", "/FI", "IMAGENAME eq AdguardSvc.exe")
 	out, _ := cmd.Output()
 	if contains(string(out), "AdguardSvc.exe") {
 		conflicts = append(conflicts, "AdguardSvc")
 	}
 
 	// Killer NIC service check
-	cmd = exec.Command("sc", "query")
+	cmd = hiddenCmd("sc", "query")
 	out, _ = cmd.Output()
 	if contains(string(out), "Killer") {
 		conflicts = append(conflicts, "Killer NIC")
 	}
 
 	// Intel Connectivity Network Service check
-	cmd = exec.Command("sc", "query")
+	cmd = hiddenCmd("sc", "query")
 	out, _ = cmd.Output()
 	if contains(string(out), "Intel") && contains(string(out), "Connectivity") && contains(string(out), "Network") {
 		conflicts = append(conflicts, "Intel Connectivity Network Service")
 	}
 
 	// SmartByte service check
-	cmd = exec.Command("sc", "query")
+	cmd = hiddenCmd("sc", "query")
 	out, _ = cmd.Output()
 	if contains(string(out), "SmartByte") {
 		conflicts = append(conflicts, "SmartByte")
