@@ -2,45 +2,28 @@ package main
 
 import (
 	"fmt"
+	"strings"
 )
 
 // StrategyVector holds all variable parameters for DPI bypass strategies
 type StrategyVector struct {
-	// TCP desync method
-	DesyncMethod string // fake | fake,fakedsplit | fake,multisplit | fake,hostfakesplit | fake,multidisorder | syndata,multidisorder | syndata | hostfakesplit
-
-	// Repeats
-	RepeatsTCP int // 4 | 6 | 8 | 10 | 11 | 12 | 14
-	RepeatsUDP int // 4 | 6 | 10 | 11 | 12
-
-	// TCP fooling
-	Fooling string // ts | badseq | ts,md5sig
-
-	// Split position
-	SplitPos string // 1 | 2 | 2,sniext+1 | 1,midsld
-
-	// TLS fake
-	TLSMode  string   // file | tls-mod | none
-	TLSFiles []string // filenames from assets/fake/
-	TLSMod   string   // rnd,dupsid,sni=www.google.com | rnd,dupsid,sni=ya.ru
-
-	// seqovl — only used with multisplit
-	SeqOvl        int    // 0 | 568 | 652 | 664 | 679 | 681
-	SeqOvlPattern string // filename from assets/fake/
-
-	// hostfakesplit mod
-	HostFakeMod string // www.google.com | ya.ru | ozon.ru
-
-	// Game / ipset rules
-	Cutoff          string // n2 | n3 | n4 | n5
-	BadseqIncrement int    // 2 | 1000 | 10000000
-
-	// QUIC bin
-	QuicBin string // quic_initial_www_google_com.bin
-
-	// Misc
-	AnyProtocol bool
-	IPID        string // zero | ""
+	DesyncMethod    string
+	RepeatsTCP      int
+	RepeatsUDP      int
+	Fooling         string
+	SplitPos        string
+	TLSMode         string
+	TLSFiles        []string
+	TLSMod          string
+	SeqOvl          int
+	SeqOvlPattern   string
+	HostFakeMod     string
+	Cutoff          string
+	BadseqIncrement int
+	QuicBin         string
+	AnyProtocol     bool
+	IPID            string
+	AutoTTL         string
 }
 
 // SearchSpace defines all possible values for each parameter
@@ -61,33 +44,43 @@ var SearchSpace = struct {
 	BadseqIncrement []int
 	QuicBin         []string
 	IPID            []string
+	AutoTTL         []string
 }{
-	DesyncMethod: []string{"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit", "fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit"},
-	RepeatsTCP:   []int{4, 6, 8, 10, 11, 12, 14},
-	RepeatsUDP:   []int{4, 6, 10, 11, 12},
-	Fooling:      []string{"ts", "badseq", "ts,md5sig"},
-	SplitPos:     []string{"1", "2", "2,sniext+1", "1,midsld"},
-	TLSMode:      []string{"file", "tls-mod", "none"},
+	DesyncMethod: []string{
+		"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit",
+		"fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit",
+		"multidisorder", "disorder", "split", "multisplit", "disorder,split", "split2",
+	},
+	RepeatsTCP: []int{0, 4, 6, 8, 10, 11, 12, 14},
+	RepeatsUDP: []int{4, 6, 10, 11, 12},
+	Fooling:    []string{"", "ts", "badseq", "ts,md5sig", "badsum", "md5sig", "ts,badseq"},
+	SplitPos:   []string{"1", "2", "1,2", "2,sniext+1", "1,sniext+1", "1,midsld", "10,midsld", "7,sld+1", "2,sld", "1,midsld,endhost-1"},
+	TLSMode:    []string{"file", "tls-mod", "none"},
 	TLSFiles: [][]string{
 		{"tls_clienthello_www_google_com.bin"},
+		{"stun.bin"},
 		{"stun.bin", "tls_clienthello_www_google_com.bin"},
 		{"stun.bin", "tls_clienthello_max_ru.bin"},
 		{"tls_clienthello_4pda_to.bin"},
 		{"tls_clienthello_max_ru.bin"},
 	},
-	TLSMod:          []string{"rnd,dupsid,sni=www.google.com", "rnd,dupsid,sni=ya.ru"},
-	SeqOvl:          []int{0, 568, 652, 664, 679, 681},
-	SeqOvlPattern:   []string{"tls_clienthello_www_google_com.bin", "tls_clienthello_4pda_to.bin", "tls_clienthello_max_ru.bin"},
+	TLSMod:          []string{"rnd,dupsid,sni=www.google.com", "rnd,dupsid,sni=ya.ru", "rnd,dupsid,sni=ggpht.com"},
+	SeqOvl:          []int{0, 1, 4, 336, 568, 620, 652, 654, 664, 679, 681, 2108},
+	SeqOvlPattern:   []string{"tls_clienthello_www_google_com.bin", "tls_clienthello_4pda_to.bin", "tls_clienthello_max_ru.bin", "stun.bin"},
 	HostFakeMod:     []string{"www.google.com", "ya.ru", "ozon.ru"},
-	Cutoff:          []string{"n2", "n3", "n4", "n5"},
+	Cutoff:          []string{"", "n2", "n3", "n4", "n5"},
 	BadseqIncrement: []int{2, 1000, 10000000},
 	QuicBin:         []string{"quic_initial_www_google_com.bin", "quic_initial_dbankcloud_ru.bin", "quic_initial_yandex_ru.bin"},
 	IPID:            []string{"zero", ""},
+	AutoTTL:         []string{"", "2:2-12", "2:1-10"},
 }
 
 // buildTLSArgs constructs TLS-related winws arguments from a strategy vector
 func buildTLSArgs(v StrategyVector) []string {
 	args := []string{}
+	if !strings.Contains(v.DesyncMethod, "fake") {
+		return args
+	}
 	switch v.TLSMode {
 	case "file":
 		for _, f := range v.TLSFiles {
@@ -101,39 +94,42 @@ func buildTLSArgs(v StrategyVector) []string {
 
 // buildTCPRule builds args for a generic TCP rule
 func buildTCPRule(v StrategyVector) []string {
+	// clean methods (split/disorder/multisplit etc.) don't use fake-specific params
+	if !strings.Contains(v.DesyncMethod, "fake") {
+		v.Fooling = ""
+		v.RepeatsTCP = 0
+		v.AutoTTL = ""
+	}
+
 	args := []string{}
-
 	args = append(args, fmt.Sprintf("--dpi-desync=%s", v.DesyncMethod))
-	args = append(args, fmt.Sprintf("--dpi-desync-repeats=%d", v.RepeatsTCP))
 
+	if v.RepeatsTCP > 0 {
+		args = append(args, fmt.Sprintf("--dpi-desync-repeats=%d", v.RepeatsTCP))
+	}
 	if v.Fooling != "" {
 		args = append(args, fmt.Sprintf("--dpi-desync-fooling=%s", v.Fooling))
 	}
-
 	if v.SplitPos != "" {
 		args = append(args, fmt.Sprintf("--dpi-desync-split-pos=%s", v.SplitPos))
 	}
-
-	// badseq-increment only makes sense with badseq fooling
-	if v.Fooling == "badseq" && v.BadseqIncrement != 0 {
+	if strings.Contains(v.Fooling, "badseq") && v.BadseqIncrement != 0 {
 		args = append(args, fmt.Sprintf("--dpi-desync-badseq-increment=%d", v.BadseqIncrement))
 	}
-
-	// seqovl only used with multisplit
-	if v.SeqOvl > 0 && containsStr(v.DesyncMethod, "multisplit") {
+	if v.SeqOvl > 0 && (strings.Contains(v.DesyncMethod, "multisplit") || strings.Contains(v.DesyncMethod, "split2")) {
 		args = append(args, fmt.Sprintf("--dpi-desync-split-seqovl=%d", v.SeqOvl))
 		args = append(args, fmt.Sprintf("--dpi-desync-split-seqovl-pattern=%s", fake(v.SeqOvlPattern)))
 	}
-
-	// hostfakesplit mod
-	if containsStr(v.DesyncMethod, "hostfakesplit") && v.HostFakeMod != "" {
+	if v.AutoTTL != "" {
+		args = append(args, fmt.Sprintf("--dpi-desync-autottl=%s", v.AutoTTL))
+	}
+	if strings.Contains(v.DesyncMethod, "hostfakesplit") && v.HostFakeMod != "" {
 		args = append(args, fmt.Sprintf("--dpi-desync-hostfakesplit-mod=host=%s,altorder=1", v.HostFakeMod))
 	}
-
 	args = append(args, buildTLSArgs(v)...)
-
-	// fake-http always max_ru
-	args = append(args, fmt.Sprintf("--dpi-desync-fake-http=%s", fake("tls_clienthello_max_ru.bin")))
+	if strings.Contains(v.DesyncMethod, "fake") {
+		args = append(args, fmt.Sprintf("--dpi-desync-fake-http=%s", fake("tls_clienthello_max_ru.bin")))
+	}
 
 	return args
 }

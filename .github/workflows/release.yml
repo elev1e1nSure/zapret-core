@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.1)'
+        required: true
+        default: 'v1.0.0'
 
 permissions:
   contents: write
@@ -30,7 +36,7 @@ jobs:
         run: go test ./...
       
       - name: Build
-        run: go build -ldflags="-s -w -H windowsgui" -o zapret-core.exe .
+        run: go build -ldflags="-s -w" -o zapret-core.exe ./internal
       
       - name: Create distribution directory
         run: |
@@ -45,7 +51,11 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          $version = git describe --tags --abbrev=0
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = git describe --tags --abbrev=0
+          }
           Write-Output "VERSION=$version" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
@@ -180,6 +190,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
           files: |
             zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
             checksums.txt
