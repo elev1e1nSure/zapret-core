@@ -2,159 +2,174 @@ package main
 
 import (
 	"context"
-	"math"
-	"math/rand"
 	"strings"
+	"time"
 )
 
-// arm represents a single strategy candidate with UCB1 statistics
-type arm struct {
-	vector     StrategyVector
-	totalScore float64
-	pulls      int
-}
-
-// ucb1Score returns the UCB1 value for this arm
-// Balances exploitation (known good) vs exploration (untested)
-func (a *arm) ucb1Score(totalPulls int) float64 {
-	if a.pulls == 0 {
-		return math.Inf(1) // always test untried arms first
-	}
-	avgScore := a.totalScore / float64(a.pulls)
-	exploration := math.Sqrt(2 * math.Log(float64(totalPulls)) / float64(a.pulls))
-	return avgScore + exploration
-}
-
-// Optimizer runs UCB1 algorithm over the strategy search space to find working DPI bypass strategies
+// Optimizer finds working DPI bypass strategies using a 2-phase approach:
+//
+//	Phase 1 probes each DesyncMethod family with default params to identify
+//	methods that improve on the baseline (no-winws) score.
+//	Phase 2 sweeps Fooling × TLSMode combinations only for the alive methods.
+//
+// This avoids testing 70+ candidates when none of them work on a given ISP:
+// if Phase 1 finds no improvement, we bail out after ~14 tests (~84s) instead
+// of spending 7+ minutes exhausting the full search space.
 type Optimizer struct {
 	asn          string
 	kb           *Knowledge
-	arms         []*arm
-	totalPulls   int
 	progressChan chan FindProgress
 	ctx          context.Context
 }
 
-// NewOptimizer builds the arm pool from SearchSpace + known good strategies for ASN
+// NewOptimizer creates an optimizer without progress reporting.
 func NewOptimizer(asn string, kb *Knowledge) *Optimizer {
 	return NewOptimizerWithProgress(asn, kb, nil, context.Background())
 }
 
-// NewOptimizerWithProgress builds optimizer with progress callback channel and context.
-// Pass context.Background() if cancellation is not needed.
+// NewOptimizerWithProgress creates an optimizer with SSE progress reporting
+// and context-based cancellation. Pass context.Background() if not needed.
 func NewOptimizerWithProgress(asn string, kb *Knowledge, progressChan chan FindProgress, ctx context.Context) *Optimizer {
-	arms := buildArms(asn, kb)
 	return &Optimizer{
 		asn:          asn,
 		kb:           kb,
-		arms:         arms,
 		progressChan: progressChan,
 		ctx:          ctx,
 	}
 }
 
-// Run iterates until a working strategy is found or arms are exhausted.
-// Returns the winning Strategy and its StrategyVector, or nil/zero on failure.
+// Run executes the 2-phase search and returns the winning strategy + vector,
+// or nil/zero if nothing works.
 func (o *Optimizer) Run() (*Strategy, StrategyVector) {
-	logInfo("Search space: %d candidate strategies", len(o.arms))
+	// --- Baseline: measure connectivity without winws ---
+	StopWinws()
+	time.Sleep(500 * time.Millisecond)
+	baseline, _ := checkTargets()
+	logInfo("[optimizer] baseline score=%.2f (no winws)", baseline)
 
-	for i := 0; i < len(o.arms); i++ {
-		select {
-		case <-o.ctx.Done():
-			logInfo("[optimizer] search cancelled")
+	if baseline >= Cfg.ScoreThreshold {
+		logInfo("[optimizer] targets already accessible, no bypass needed")
+		return nil, StrategyVector{}
+	}
+
+	// --- Known-good strategies: fast path before full search ---
+	known := o.kb.BestForASN(o.asn, 10)
+	for i, v := range known {
+		if err := o.checkCancel(); err != nil {
 			return nil, StrategyVector{}
-		default:
+		}
+		s := VectorToStrategy(v, i+1)
+		logInfo("[kb] %d/%d testing known strategy: %s", i+1, len(known), s.Name)
+		result := TestStrategy(s)
+		if result.Score >= Cfg.ScoreThreshold {
+			logInfo("[kb] known strategy works (score=%.2f)", result.Score)
+			StartWinws(s)
+			return s, v
+		}
+	}
+
+	// --- Phase 1: probe each DesyncMethod family with default params ---
+	methods := SearchSpace.DesyncMethod
+	logInfo("[phase1] probing %d method families", len(methods))
+
+	aliveMethods := []string{}
+	for i, method := range methods {
+		if err := o.checkCancel(); err != nil {
+			return nil, StrategyVector{}
 		}
 
-		a := o.selectArm()
-		if a == nil {
-			break
-		}
+		v := defaultVector(method)
+		s := VectorToStrategy(v, i+1)
+		logInfo("[phase1] %d/%d testing: %s", i+1, len(methods), s.Name)
+		o.sendProgress(i+1, len(methods), s.Name, 0)
 
-		strategy := VectorToStrategy(a.vector, i+1)
-		logInfo("[%d/%d] Testing: %s", i+1, len(o.arms), strategy.Name)
-
-		// Send progress update if channel is set
-		if o.progressChan != nil {
-			o.progressChan <- FindProgress{
-				Current:  i + 1,
-				Total:    len(o.arms),
-				Strategy: strategy.Name,
-				Score:    0.0,
-			}
-		}
-
-		result := TestStrategy(strategy)
-		o.totalPulls++
-		a.pulls++
-		a.totalScore += result.Score
-
-		// Send progress update after test
-		if o.progressChan != nil {
-			o.progressChan <- FindProgress{
-				Current:  i + 1,
-				Total:    len(o.arms),
-				Strategy: strategy.Name,
-				Score:    result.Score,
-			}
-		}
+		result := TestStrategy(s)
+		o.sendProgress(i+1, len(methods), s.Name, result.Score)
 
 		if result.Score >= Cfg.ScoreThreshold {
-			logInfo("Strategy works (score=%.2f)", result.Score)
-			StopWinws()
-			StartWinws(strategy)
-			return strategy, a.vector
+			logInfo("[phase1] winner found (score=%.2f)", result.Score)
+			StartWinws(s)
+			return s, v
+		}
+		if result.Score > baseline {
+			aliveMethods = append(aliveMethods, method)
+			logInfo("[phase1] method %s alive (score=%.2f)", method, result.Score)
+		}
+	}
+
+	if len(aliveMethods) == 0 {
+		logWarn("[optimizer] phase1 found no promising methods — giving up")
+		return nil, StrategyVector{}
+	}
+	logInfo("[phase1] %d methods alive: %v", len(aliveMethods), aliveMethods)
+
+	// --- Phase 2: parameter sweep for alive methods only ---
+	candidates := generateCandidatesFor(aliveMethods)
+	logInfo("[phase2] %d candidates for %d alive methods", len(candidates), len(aliveMethods))
+
+	phase2Base := len(methods)
+	phase2Total := phase2Base + len(candidates)
+
+	for i, v := range candidates {
+		if err := o.checkCancel(); err != nil {
+			return nil, StrategyVector{}
 		}
 
+		s := VectorToStrategy(v, phase2Base+i+1)
+		logInfo("[phase2] %d/%d testing: %s", i+1, len(candidates), s.Name)
+		o.sendProgress(phase2Base+i+1, phase2Total, s.Name, 0)
+
+		result := TestStrategy(s)
+		o.sendProgress(phase2Base+i+1, phase2Total, s.Name, result.Score)
+
+		if result.Score >= Cfg.ScoreThreshold {
+			logInfo("[phase2] winner found (score=%.2f)", result.Score)
+			StartWinws(s)
+			return s, v
+		}
 		logWarn("Not good enough (score=%.2f)", result.Score)
 	}
 
 	return nil, StrategyVector{}
 }
 
-// selectArm picks the arm with the highest UCB1 score
-func (o *Optimizer) selectArm() *arm {
-	best := -math.MaxFloat64
-	var selected *arm
+// checkCancel returns an error if the context is done, nil otherwise.
+func (o *Optimizer) checkCancel() error {
+	select {
+	case <-o.ctx.Done():
+		logInfo("[optimizer] search cancelled")
+		return o.ctx.Err()
+	default:
+		return nil
+	}
+}
 
-	for _, a := range o.arms {
-		score := a.ucb1Score(o.totalPulls + 1)
-		if score > best {
-			best = score
-			selected = a
+// sendProgress sends a progress update if the channel is set.
+func (o *Optimizer) sendProgress(current, total int, strategy string, score float64) {
+	if o.progressChan != nil {
+		o.progressChan <- FindProgress{
+			Current:  current,
+			Total:    total,
+			Strategy: strategy,
+			Score:    score,
 		}
 	}
-
-	return selected
 }
 
-// buildArms creates the full arm pool:
-// 1. Known good strategies for this ASN — pre-seeded so UCB1 picks them early
-// 2. New candidates sampled from SearchSpace
-func buildArms(asn string, kb *Knowledge) []*arm {
-	known := kb.BestForASN(asn, 999)
-	arms := make([]*arm, 0, len(known)+64)
-
-	for _, v := range known {
-		arms = append(arms, &arm{vector: v, totalScore: 1.0, pulls: 1})
+// generateCandidatesFor produces strategy vectors for the given methods only,
+// covering all Fooling × TLSMode combinations, deduplicated by actual winws args.
+func generateCandidatesFor(methods []string) []StrategyVector {
+	allowed := make(map[string]bool, len(methods))
+	for _, m := range methods {
+		allowed[m] = true
 	}
-	for _, v := range generateCandidates() {
-		arms = append(arms, &arm{vector: v})
-	}
-	return arms
-}
 
-// generateCandidates produces a structured set of vectors from SearchSpace.
-// Covers all combinations of high-impact axes first (DesyncMethod × Fooling × TLSMode),
-// then appends 64 random samples for long-tail exploration.
-// Deduplicates by actual winws args — clean methods strip fooling/TLS in buildTCPRule,
-// so many grid combinations produce identical command lines.
-func generateCandidates() []StrategyVector {
 	ss := SearchSpace
-	raw := make([]StrategyVector, 0, len(ss.DesyncMethod)*len(ss.Fooling)*len(ss.TLSMode)+64)
-
-	// High-impact grid
+	raw := make([]StrategyVector, 0, len(methods)*len(ss.Fooling)*len(ss.TLSMode))
 	for _, method := range ss.DesyncMethod {
+		if !allowed[method] {
+			continue
+		}
 		for _, fooling := range ss.Fooling {
 			for _, tlsMode := range ss.TLSMode {
 				v := defaultVector(method)
@@ -164,40 +179,21 @@ func generateCandidates() []StrategyVector {
 			}
 		}
 	}
+	return deduplicateVectors(raw)
+}
 
-	// Random exploration
-	for i := 0; i < 64; i++ {
-		method := ss.DesyncMethod[rand.Intn(len(ss.DesyncMethod))]
-		v := defaultVector(method)
-		v.Fooling = ss.Fooling[rand.Intn(len(ss.Fooling))]
-		v.TLSMode = ss.TLSMode[rand.Intn(len(ss.TLSMode))]
-		v.RepeatsTCP = ss.RepeatsTCP[rand.Intn(len(ss.RepeatsTCP))]
-		v.RepeatsUDP = ss.RepeatsUDP[rand.Intn(len(ss.RepeatsUDP))]
-		v.SplitPos = ss.SplitPos[rand.Intn(len(ss.SplitPos))]
-		v.TLSFiles = ss.TLSFiles[rand.Intn(len(ss.TLSFiles))]
-		v.TLSMod = ss.TLSMod[rand.Intn(len(ss.TLSMod))]
-		v.SeqOvl = ss.SeqOvl[rand.Intn(len(ss.SeqOvl))]
-		v.SeqOvlPattern = ss.SeqOvlPattern[rand.Intn(len(ss.SeqOvlPattern))]
-		v.HostFakeMod = ss.HostFakeMod[rand.Intn(len(ss.HostFakeMod))]
-		v.Cutoff = ss.Cutoff[rand.Intn(len(ss.Cutoff))]
-		v.BadseqIncrement = ss.BadseqIncrement[rand.Intn(len(ss.BadseqIncrement))]
-		v.IPID = ss.IPID[rand.Intn(len(ss.IPID))]
-		v.AutoTTL = ss.AutoTTL[rand.Intn(len(ss.AutoTTL))]
-		raw = append(raw, v)
-	}
-
-	// Deduplicate by actual winws args — many vectors produce identical command lines
+// deduplicateVectors removes vectors that produce identical winws command lines.
+func deduplicateVectors(raw []StrategyVector) []StrategyVector {
 	seen := make(map[string]bool, len(raw))
-	vectors := make([]StrategyVector, 0, len(raw))
+	out := make([]StrategyVector, 0, len(raw))
 	for _, v := range raw {
 		key := strings.Join(Generate(v), "|")
 		if !seen[key] {
 			seen[key] = true
-			vectors = append(vectors, v)
+			out = append(out, v)
 		}
 	}
-
-	return vectors
+	return out
 }
 
 // defaultVector returns a StrategyVector with sensible fixed defaults for the given method.
@@ -222,7 +218,7 @@ func defaultVector(method string) StrategyVector {
 	}
 }
 
-// defaultSeqOvl returns a sensible seqovl default based on desync method
+// defaultSeqOvl returns a sensible seqovl default based on desync method.
 func defaultSeqOvl(method string) int {
 	if containsStr(method, "multisplit") {
 		return 664
