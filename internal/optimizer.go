@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"math"
 	"math/rand"
+	"strings"
 )
 
 // arm represents a single strategy candidate with UCB1 statistics
@@ -30,21 +32,24 @@ type Optimizer struct {
 	arms         []*arm
 	totalPulls   int
 	progressChan chan FindProgress
+	ctx          context.Context
 }
 
 // NewOptimizer builds the arm pool from SearchSpace + known good strategies for ASN
 func NewOptimizer(asn string, kb *Knowledge) *Optimizer {
-	return NewOptimizerWithProgress(asn, kb, nil)
+	return NewOptimizerWithProgress(asn, kb, nil, context.Background())
 }
 
-// NewOptimizerWithProgress builds optimizer with progress callback channel
-func NewOptimizerWithProgress(asn string, kb *Knowledge, progressChan chan FindProgress) *Optimizer {
+// NewOptimizerWithProgress builds optimizer with progress callback channel and context.
+// Pass context.Background() if cancellation is not needed.
+func NewOptimizerWithProgress(asn string, kb *Knowledge, progressChan chan FindProgress, ctx context.Context) *Optimizer {
 	arms := buildArms(asn, kb)
 	return &Optimizer{
 		asn:          asn,
 		kb:           kb,
 		arms:         arms,
 		progressChan: progressChan,
+		ctx:          ctx,
 	}
 }
 
@@ -54,6 +59,13 @@ func (o *Optimizer) Run() (*Strategy, StrategyVector) {
 	logInfo("Search space: %d candidate strategies", len(o.arms))
 
 	for i := 0; i < len(o.arms); i++ {
+		select {
+		case <-o.ctx.Done():
+			logInfo("[optimizer] search cancelled")
+			return nil, StrategyVector{}
+		default:
+		}
+
 		a := o.selectArm()
 		if a == nil {
 			break
@@ -135,9 +147,11 @@ func buildArms(asn string, kb *Knowledge) []*arm {
 // generateCandidates produces a structured set of vectors from SearchSpace.
 // Covers all combinations of high-impact axes first (DesyncMethod × Fooling × TLSMode),
 // then appends 64 random samples for long-tail exploration.
+// Deduplicates by actual winws args — clean methods strip fooling/TLS in buildTCPRule,
+// so many grid combinations produce identical command lines.
 func generateCandidates() []StrategyVector {
 	ss := SearchSpace
-	vectors := []StrategyVector{}
+	raw := make([]StrategyVector, 0, len(ss.DesyncMethod)*len(ss.Fooling)*len(ss.TLSMode)+64)
 
 	// High-impact grid
 	for _, method := range ss.DesyncMethod {
@@ -146,7 +160,7 @@ func generateCandidates() []StrategyVector {
 				v := defaultVector(method)
 				v.Fooling = fooling
 				v.TLSMode = tlsMode
-				vectors = append(vectors, v)
+				raw = append(raw, v)
 			}
 		}
 	}
@@ -168,7 +182,19 @@ func generateCandidates() []StrategyVector {
 		v.Cutoff = ss.Cutoff[rand.Intn(len(ss.Cutoff))]
 		v.BadseqIncrement = ss.BadseqIncrement[rand.Intn(len(ss.BadseqIncrement))]
 		v.IPID = ss.IPID[rand.Intn(len(ss.IPID))]
-		vectors = append(vectors, v)
+		v.AutoTTL = ss.AutoTTL[rand.Intn(len(ss.AutoTTL))]
+		raw = append(raw, v)
+	}
+
+	// Deduplicate by actual winws args — many vectors produce identical command lines
+	seen := make(map[string]bool, len(raw))
+	vectors := make([]StrategyVector, 0, len(raw))
+	for _, v := range raw {
+		key := strings.Join(Generate(v), "|")
+		if !seen[key] {
+			seen[key] = true
+			vectors = append(vectors, v)
+		}
 	}
 
 	return vectors

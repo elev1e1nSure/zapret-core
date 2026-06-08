@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -107,7 +108,7 @@ func TestStrategy(s *Strategy) TestResult {
 	return TestResult{Score: finalScore, Details: lastDetails}
 }
 
-// checkTargets checks all default targets and returns score + per-target results
+// checkTargets checks all default targets in parallel and returns score + per-target results
 func checkTargets() (float64, map[string]bool) {
 	client := &http.Client{
 		Timeout: Cfg.TestTimeoutDuration(),
@@ -116,21 +117,29 @@ func checkTargets() (float64, map[string]bool) {
 		},
 	}
 
-	details := map[string]bool{}
-	ok := 0
+	details := make(map[string]bool, len(defaultTargets))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var okCount int64
 
 	for _, t := range defaultTargets {
-		resp, err := client.Get(t.URL)
-		if err == nil && resp.StatusCode < 500 {
-			details[t.Name] = true
-			ok++
-			resp.Body.Close()
-		} else {
-			details[t.Name] = false
-		}
+		wg.Add(1)
+		go func(t TestTarget) {
+			defer wg.Done()
+			resp, err := client.Get(t.URL)
+			ok := err == nil && resp.StatusCode < 500
+			if ok {
+				resp.Body.Close()
+				atomic.AddInt64(&okCount, 1)
+			}
+			mu.Lock()
+			details[t.Name] = ok
+			mu.Unlock()
+		}(t)
 	}
+	wg.Wait()
 
-	score := float64(ok) / float64(len(defaultTargets))
+	score := float64(okCount) / float64(len(defaultTargets))
 	return score, details
 }
 

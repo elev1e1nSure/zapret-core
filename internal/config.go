@@ -24,9 +24,9 @@ var defaultConfig = Config{
 	ScoreThreshold: 0.6,
 	FailThreshold:  3,
 	CheckInterval:  60,
-	InitDelay:      5,
-	TestTimeout:    8,
-	TestRuns:       2,
+	InitDelay:      2,
+	TestTimeout:    3,
+	TestRuns:       1,
 }
 
 // Cfg is the active configuration, loaded once at startup and modified via HTTP API

@@ -739,8 +739,9 @@ func (s *APIServer) handleFind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
 	go func() {
-		opt := NewOptimizerWithProgress(s.provider.ASN, s.kb, progressChan)
+		opt := NewOptimizerWithProgress(s.provider.ASN, s.kb, progressChan, ctx)
 		result, vector := opt.Run()
 
 		if result != nil {
